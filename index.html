@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ATARA — Temp Frontend</title>
+  <link rel="stylesheet" href="/src/style.css" />
+</head>
+<body>
+  <!-- Top bar visible solo en móvil -->
+  <header id="mobile-topbar">
+    <span class="logo">ATARA</span>
+    <button id="hamburger" aria-label="Abrir menú">
+      <span></span><span></span><span></span>
+    </button>
+  </header>
+
+  <!-- Backdrop para cerrar el sidebar al tocar fuera -->
+  <div id="sidebar-backdrop"></div>
+
+  <div id="app">
+    <nav class="sidebar">
+      <div class="sidebar-header">
+        <span class="logo">ATARA</span>
+        <span class="subtitle">Frontend temporal</span>
+      </div>
+      <ul class="nav-links">
+        <li class="nav-section-label">Gestión</li>
+        <li><a href="#" data-page="aniosLectivos">Años Lectivos</a></li>
+        <li><a href="#" data-page="estudiantes">Estudiantes</a></li>
+        <li><a href="#" data-page="importarPiad">Importar PIAD</a></li>
+        <li><a href="#" data-page="matriculas">Matrículas</a></li>
+        <li><a href="#" data-page="evaluaciones">Evaluaciones</a></li>
+        <li><a href="#" data-page="alertas">Alertas (API)</a></li>
+        <li class="nav-section-label">Análisis</li>
+        <li><a href="#" data-page="alertasTempranas">Alertas Tempranas</a></li>
+        <li><a href="#" data-page="visualizaciones">Visualizaciones</a></li>
+        <li><a href="#" data-page="reportes">Reportes</a></li>
+      </ul>
+      <div class="backend-status">
+        <span id="status-dot" class="dot"></span>
+        <span id="status-label">Conectando...</span>
+      </div>
+    </nav>
+    <main id="page-content" class="content">
+      <p class="loading">Cargando...</p>
+    </main>
+  </div>
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>
