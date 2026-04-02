@@ -1,365 +1,424 @@
 /**
- * Visualizaciones — Mapa de calor pedagógico
+ * Visualizaciones — Mapa de calor pedagógico (datos reales)
  *
- * Heatmap where:
- *   Rows    = students
- *   Columns = real contenidos from the Excel, grouped by eje temático
- *   Cells   = last-period score (1–4) with color coding
+ * Filas    = estudiantes reales de la sección
+ * Columnas = ejes temáticos agrupados por tipo de saber (Conceptual / Procedimental / Actitudinal)
+ * Celdas   = promedio por eje (escala 1–5) coloreado por nivel de alerta
  *
- * Color scale (from propuesta-contenidos-espanol.md):
- *   1 → Red     (Insuficiente — critical)
- *   2 → Orange  (Básico — at risk)
- *   3 → Yellow  (Satisfactorio — acceptable)
- *   4 → Green   (Destacado — strong)
- *
- * Visual enhancements:
- *   ↘  in cell if current score < previous period (regression)
- *   ⇄  in cell if same low score across all 3 periods (stagnation)
- *   Cluster highlight: if 3+ consecutive low scores in same eje, row section is flagged
+ * Escala y colores:
+ *   > 3.0  → Verde   (Sin alerta)
+ *   2.1–3  → Ámbar   (Alerta media)
+ *   ≤ 2.0  → Rojo    (Alerta alta)
  */
 
 import {
-  EJES, CONTENIDOS, ESTUDIANTES,
-  REGISTROS, PERIODOS,
-  getScoreHistory, getLastScore,
-  SCORE_COLORS, SCORE_TEXT, SCORE_LABELS, SABER_LABELS, SABER_COLORS,
-  getEje,
-} from '../pedagogicaData.js'
+  getAnioLectivoActivo,
+  getPeriodos,
+  getSecciones,
+  getMatriculasBySeccion,
+  getPromediosSeccionSaber,
+} from '../api.js'
 
-const SCHOOLS = [...new Set(ESTUDIANTES.map(e => e.escuela))]
-
-// ─── cell logic helpers ───────────────────────────────────────────────────────
-
-/** Returns regression/stagnation indicator for a score history */
-function cellIndicator(hist) {
-  if (!hist || hist.length < 2) return ''
-  const allLow   = hist.every(s => s <= 2)
-  const noGrowth = hist[hist.length - 1] <= hist[0]
-  if (allLow && noGrowth && hist.length >= 2) return '<span style="font-size:9px;opacity:.8">⇄</span>'
-  if (hist[hist.length - 1] < hist[hist.length - 2]) return '<span style="font-size:9px;opacity:.8">↘</span>'
-  return ''
+// ── Paleta ────────────────────────────────────────────────────────────────────
+const ALERTA_COLOR = {
+  ALTA:       { bg: '#fee2e2', color: '#dc2626', label: 'Alerta alta'  },
+  MEDIA:      { bg: '#fef3c7', color: '#d97706', label: 'Alerta media' },
+  SIN_ALERTA: { bg: '#dcfce7', color: '#16a34a', label: 'Sin alerta'   },
+  null:       { bg: '#f3f4f6', color: '#9ca3af', label: 'Sin datos'    },
 }
 
-/** Returns average score for a row of cells (ignoring nulls) */
-function rowAvg(scores) {
-  const valid = scores.filter(s => s !== null)
-  if (!valid.length) return null
-  return valid.reduce((a, b) => a + b, 0) / valid.length
+function colorFromValue(v) {
+  if (v === null || v === undefined) return ALERTA_COLOR.null
+  if (v <= 2.0) return ALERTA_COLOR.ALTA
+  if (v <= 3.0) return ALERTA_COLOR.MEDIA
+  return ALERTA_COLOR.SIN_ALERTA
 }
 
-/** Color for an average (continuous, not stepped) */
-function avgColor(avg) {
-  if (avg === null) return '#e5e7eb'
-  if (avg < 1.5) return SCORE_COLORS[1]
-  if (avg < 2.5) return SCORE_COLORS[2]
-  if (avg < 3.5) return SCORE_COLORS[3]
-  return SCORE_COLORS[4]
-}
-function avgTextColor(avg) {
-  if (avg === null) return '#9ca3af'
-  if (avg >= 2.5 && avg < 3.5) return '#78350f'
-  return '#fff'
+function fmt(v) {
+  return v !== null && v !== undefined ? parseFloat(v).toFixed(1) : '—'
 }
 
-// ─── main render ─────────────────────────────────────────────────────────────
+function ordinalGrado(n) {
+  return ['','Primero','Segundo','Tercero','Cuarto','Quinto','Sexto'][n] || `${n}°`
+}
 
-export function renderVisualizaciones(container, params = {}) {
-  const grades = [...new Set(CONTENIDOS.map(c => c.grado))].sort()
-
+// ── Render principal ──────────────────────────────────────────────────────────
+export async function renderVisualizaciones(container, params = {}) {
   container.innerHTML = `
     <h1>Mapa de Calor Pedagógico</h1>
     <p class="page-desc">
-      Rendimiento por contenido (extraído del curriculum de Español MEP), agrupado por eje temático.
-      Las columnas corresponden a contenidos reales del archivo curricular.
+      Promedio por eje temático para cada estudiante, coloreado por nivel de alerta.
     </p>
 
-    <!-- Filters -->
-    <div class="card">
-      <div style="display:flex;gap:14px;flex-wrap:wrap;align-items:flex-end">
-        <div class="form-group" style="min-width:160px">
-          <label>Centro educativo</label>
-          <select id="vz-school">
-            <option value="">Todos</option>
-            ${SCHOOLS.map(s => `<option value="${s}">${s}</option>`).join('')}
+    <!-- Panel de selectores -->
+    <div class="card" style="margin-bottom:20px">
+      <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-end">
+        <div class="form-group" style="min-width:180px;margin-bottom:0">
+          <label>Periodo</label>
+          <select id="sel-periodo" disabled>
+            <option value="">Cargando…</option>
           </select>
         </div>
-        <div class="form-group" style="min-width:120px">
+        <div class="form-group" style="min-width:200px;margin-bottom:0">
           <label>Sección</label>
-          <select id="vz-section">
-            <option value="">Todas</option>
+          <select id="sel-seccion" disabled>
+            <option value="">Seleccione un periodo</option>
           </select>
         </div>
-        <div class="form-group" style="min-width:120px">
-          <label>Grado (contenidos)</label>
-          <select id="vz-grado">
-            <option value="">Todos</option>
-            ${grades.map(g => `<option value="${g}">${g}.° grado</option>`).join('')}
-          </select>
-        </div>
-        <div class="form-group" style="min-width:170px">
-          <label>Eje temático</label>
-          <select id="vz-eje">
-            <option value="">Todos</option>
-            ${EJES.map(e => `<option value="${e.id}">${e.nombre}</option>`).join('')}
-          </select>
-        </div>
-        <div class="form-group" style="min-width:150px">
-          <label>Tipo de saber</label>
-          <select id="vz-saber">
-            <option value="">Todos</option>
-            <option value="CONCEPTUAL">Conceptual</option>
-            <option value="PROCEDIMENTAL">Procedimental</option>
-            <option value="ACTITUDINAL">Actitudinal</option>
-          </select>
-        </div>
-        <div class="form-group" style="min-width:170px">
+        <div class="form-group" style="flex:1;min-width:160px;margin-bottom:0">
           <label>Buscar estudiante</label>
-          <input type="text" id="vz-search" placeholder="Nombre..." />
+          <input type="text" id="vz-search" placeholder="Nombre…" disabled>
         </div>
-        <button class="btn btn-secondary btn-sm" id="vz-clear">Limpiar</button>
       </div>
     </div>
 
-    <!-- Legend -->
-    <div style="display:flex;flex-wrap:wrap;gap:20px;align-items:center;margin-bottom:16px">
-      <span style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em">Escala:</span>
-      ${[1,2,3,4].map(s => `
-        <div style="display:flex;align-items:center;gap:5px">
-          <div style="width:20px;height:20px;border-radius:3px;background:${SCORE_COLORS[s]}"></div>
-          <span style="font-size:12px">${s} — ${SCORE_LABELS[s]}</span>
-        </div>`).join('')}
-      <div style="display:flex;align-items:center;gap:5px">
-        <span style="font-size:14px;color:var(--text-muted)">↘</span>
-        <span style="font-size:12px">Regresión</span>
-      </div>
-      <div style="display:flex;align-items:center;gap:5px">
-        <span style="font-size:14px;color:var(--text-muted)">⇄</span>
-        <span style="font-size:12px">Estancamiento</span>
-      </div>
-      <div style="display:flex;align-items:center;gap:5px">
-        <div style="width:16px;height:16px;border-radius:3px;background:#fde8e8;border:2px solid #ef4444"></div>
-        <span style="font-size:12px">Clúster de debilidad (≥3 bajos en mismo eje)</span>
-      </div>
-    </div>
-
-    <!-- Heatmap -->
-    <div class="card" style="overflow-x:auto;padding:16px">
-      <div id="heatmap-container"></div>
-    </div>
-
-    <!-- Column detail panel (shows on click) -->
-    <div id="col-detail" style="display:none" class="card">
-      <h2 id="col-detail-title" style="margin-top:0;font-size:15px"></h2>
-      <div id="col-detail-body"></div>
-    </div>
+    <div id="viz-body"></div>
   `
 
-  const schoolSel  = container.querySelector('#vz-school')
-  const sectionSel = container.querySelector('#vz-section')
-  const gradoSel   = container.querySelector('#vz-grado')
-  const ejeSel     = container.querySelector('#vz-eje')
-  const saberSel   = container.querySelector('#vz-saber')
-  const searchInput= container.querySelector('#vz-search')
+  const selPeriodo = container.querySelector('#sel-periodo')
+  const selSeccion = container.querySelector('#sel-seccion')
+  const searchInput = container.querySelector('#vz-search')
+  const body = container.querySelector('#viz-body')
 
-  function updateSections() {
-    const school = schoolSel.value
-    const secciones = school
-      ? [...new Set(ESTUDIANTES.filter(e => e.escuela === school).map(e => e.seccion))].sort()
-      : [...new Set(ESTUDIANTES.map(e => e.seccion))].sort()
-    sectionSel.innerHTML = `<option value="">Todas</option>` +
-      secciones.map(s => `<option value="${s}">${s}</option>`).join('')
-  }
+  let periodos  = []
+  let secciones = []
+  let anioActivo = null
 
-  function renderHeatmap() {
-    const school  = schoolSel.value
-    const section = sectionSel.value
-    const grado   = gradoSel.value ? Number(gradoSel.value) : null
-    const ejeId   = ejeSel.value
-    const saber   = saberSel.value
-    const search  = searchInput.value.toLowerCase().trim()
+  // ── Cargar catálogos ──────────────────────────────────────────────────────
+  try {
+    anioActivo = await getAnioLectivoActivo()
+    ;[periodos, secciones] = await Promise.all([
+      getPeriodos(anioActivo.id),
+      getSecciones(anioActivo.id),
+    ])
 
-    // Filter students
-    const students = ESTUDIANTES.filter(e =>
-      (!school  || e.escuela === school)  &&
-      (!section || e.seccion === section) &&
-      (!search  || e.nombre.toLowerCase().includes(search))
-    )
+    selPeriodo.innerHTML = '<option value="">— Seleccione un periodo —</option>' +
+      periodos.map(p => `<option value="${p.id}">${p.nombre}${p.activo ? ' ★' : ''}</option>`).join('')
+    selPeriodo.disabled = false
 
-    // Filter contenidos
-    let contenidos = CONTENIDOS.filter(c =>
-      (!grado || c.grado === grado) &&
-      (!ejeId || c.eje   === ejeId) &&
-      (!saber || c.saberTipo === saber)
-    )
+    // Si hay un periodo activo, preseleccionarlo
+    // Si viene de alertas tempranas, usar el contexto que trajo
+    const periodoInicial = params.periodoId
+      ? periodos.find(p => p.id === params.periodoId)
+      : periodos.find(p => p.activo)
 
-    const hm = container.querySelector('#heatmap-container')
+    if (periodoInicial) {
+      selPeriodo.value = periodoInicial.id
+      cargarSecciones()
 
-    if (!students.length || !contenidos.length) {
-      hm.innerHTML = '<p class="empty">No hay datos con los filtros aplicados.</p>'
-      return
-    }
+      if (params.seccionId) {
+        selSeccion.value = params.seccionId
+        await cargarHeatmap(periodoInicial.id, params.seccionId)
 
-    // Group contenidos by eje
-    const ejesPresentes = EJES.filter(e => contenidos.some(c => c.eje === e.id))
-
-    // Build header HTML: eje groups + individual content columns
-    const theadEjeRow = ejesPresentes.map(eje => {
-      const cols = contenidos.filter(c => c.eje === eje.id)
-      return `<th colspan="${cols.length}" style="
-        text-align:center;padding:6px 4px;font-size:11px;font-weight:700;
-        background:${eje.color}18;color:${eje.color};border-bottom:2px solid ${eje.color};
-        white-space:nowrap;
-      ">${eje.nombre}</th>`
-    }).join('')
-
-    const theadContentRow = ejesPresentes.flatMap(eje =>
-      contenidos.filter(c => c.eje === eje.id).map(c => {
-        const saberC = SABER_COLORS[c.saberTipo]
-        return `<th style="
-          padding:6px 3px;font-size:10px;text-align:center;color:var(--text-muted);
-          min-width:56px;max-width:56px;word-break:break-word;line-height:1.3;
-          border-bottom:none;background:transparent;
-        " title="${c.nombre} — ${SABER_LABELS[c.saberTipo]}">
-          <div style="
-            display:inline-block;padding:1px 5px;border-radius:3px;margin-bottom:3px;
-            background:${saberC.bg};color:${saberC.color};font-size:9px;font-weight:700;
-          ">${c.saberTipo.slice(0, 3)}</div>
-          <div>${c.id}</div>
-        </th>`
-      })
-    ).join('')
-
-    // Build rows
-    const tbodyRows = students.map(est => {
-      const cells = []
-      let rowScores = []
-
-      ejesPresentes.forEach(eje => {
-        const ejeCols = contenidos.filter(c => c.eje === eje.id)
-        const ejeScores = []
-
-        ejeCols.forEach(c => {
-          const hist   = getScoreHistory(est.id, c.id)
-          const score  = hist.length ? hist[hist.length - 1] : null
-          const indic  = cellIndicator(hist)
-          ejeScores.push(score)
-          rowScores.push(score)
-
-          const bg   = score !== null ? SCORE_COLORS[score] : '#f3f4f6'
-          const text = score !== null ? SCORE_TEXT[score]   : '#9ca3af'
-          cells.push(`<td style="padding:3px;text-align:center" title="${c.nombre}: ${score !== null ? SCORE_LABELS[score] : 'Sin datos'}">
-            <div style="
-              background:${bg};color:${text};
-              width:52px;height:30px;border-radius:4px;
-              display:flex;align-items:center;justify-content:center;gap:1px;
-              font-size:11px;font-weight:700;margin:0 auto;cursor:default;
-            ">${score ?? '—'}${indic}</div>
-          </td>`)
-        })
-
-        // Cluster detection: if all eje scores ≤2 and eje has ≥3 cols
-        const allLow = ejeScores.filter(s => s !== null).length >= 3 &&
-                       ejeScores.filter(s => s !== null).every(s => s <= 2)
-        if (allLow) {
-          // wrap the last N cells in a highlight — we mark via a wrapper class (CSS only approach)
-          // We'll inject a visual separator cell instead
-          cells[cells.length - ejeCols.length] = cells[cells.length - ejeCols.length]
-            .replace('border-radius:4px', 'border-radius:4px;outline:2px solid #ef4444')
+        // Filtrar por el nombre del estudiante que viene de alertas
+        if (params.estudianteNombre) {
+          const primerNombre = params.estudianteNombre.split(' ')[0]
+          searchInput.value = primerNombre
+          const wrap = container.querySelector('#heatmap-wrap')
+          if (wrap?._dibujar) wrap._dibujar(primerNombre.toLowerCase())
         }
-      })
-
-      const avg = rowAvg(rowScores)
-      const avgDisplay = avg !== null ? avg.toFixed(1) : '—'
-
-      return `
-        <tr>
-          <td style="padding:8px 12px;font-weight:500;white-space:nowrap;min-width:150px">${est.nombre}</td>
-          <td style="padding:4px 8px;text-align:center;color:var(--text-muted);white-space:nowrap;font-size:12px">${est.seccion}</td>
-          ${cells.join('')}
-          <td style="padding:8px 10px;text-align:center">
-            <div style="
-              background:${avgColor(avg)};color:${avgTextColor(avg)};
-              padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700;
-              display:inline-block;white-space:nowrap;
-            ">${avgDisplay}</div>
-          </td>
-        </tr>`
-    }).join('')
-
-    // Column averages row
-    const colAvgCells = ejesPresentes.flatMap(eje =>
-      contenidos.filter(c => c.eje === eje.id).map(c => {
-        const scores = students
-          .map(e => { const h = getScoreHistory(e.id, c.id); return h.length ? h[h.length - 1] : null })
-          .filter(s => s !== null)
-        const avg = scores.length ? scores.reduce((a, b) => a + b, 0) / scores.length : null
-        const display = avg !== null ? avg.toFixed(1) : '—'
-        return `<td style="padding:6px 3px;text-align:center;background:var(--bg)">
-          <div style="
-            background:${avgColor(avg)};color:${avgTextColor(avg)};
-            width:52px;height:24px;border-radius:4px;
-            display:flex;align-items:center;justify-content:center;
-            font-size:10px;font-weight:700;margin:0 auto;
-          ">${display}</div>
-        </td>`
-      })
-    ).join('')
-
-    hm.innerHTML = `
-      <table style="border-collapse:separate;border-spacing:2px;font-size:12px;width:100%">
-        <thead>
-          <tr>
-            <th style="text-align:left;padding:8px 12px;background:transparent;border-bottom:none">Estudiante</th>
-            <th style="padding:4px 8px;background:transparent;border-bottom:none;color:var(--text-muted);font-size:11px">Sección</th>
-            ${theadEjeRow}
-            <th style="padding:8px 10px;background:transparent;border-bottom:none;font-size:11px;text-align:center;color:var(--text-muted)">Prom.</th>
-          </tr>
-          <tr>
-            <th style="background:transparent;border-bottom:none"></th>
-            <th style="background:transparent;border-bottom:none"></th>
-            ${theadContentRow}
-            <th style="background:transparent;border-bottom:none"></th>
-          </tr>
-        </thead>
-        <tbody>
-          ${tbodyRows}
-          <tr style="background:var(--bg)">
-            <td colspan="2" style="padding:6px 12px;font-size:11px;font-weight:700;color:var(--text-muted)">Promedio del grupo</td>
-            ${colAvgCells}
-            <td></td>
-          </tr>
-        </tbody>
-      </table>
-      <div style="margin-top:14px;font-size:11px;color:var(--text-muted)">
-        * Periodos evaluados: ${PERIODOS.join(' · ')} · Las celdas muestran el último trimestre disponible.
-      </div>
-    `
+      }
+    }
+  } catch (e) {
+    body.innerHTML = `<div class="card" style="color:#dc2626">Error cargando datos: ${e.message}</div>`
+    return
   }
 
-  // ── events ─────────────────────────────────────────────────────────────────
-  schoolSel.addEventListener('change', () => { updateSections(); renderHeatmap() })
-  sectionSel.addEventListener('change', renderHeatmap)
-  gradoSel.addEventListener('change', renderHeatmap)
-  ejeSel.addEventListener('change', renderHeatmap)
-  saberSel.addEventListener('change', renderHeatmap)
-  searchInput.addEventListener('input', renderHeatmap)
+  function cargarSecciones() {
+    selSeccion.innerHTML = '<option value="">— Seleccione una sección —</option>' +
+      secciones.map(s => `<option value="${s.id}">${s.nombre}${s.nivelGrado ? ` (${s.nivelGrado}°)` : ''}${s.docenteNombreCompleto ? ' — ' + s.docenteNombreCompleto : ''}</option>`).join('')
+    selSeccion.disabled = false
+  }
 
-  container.querySelector('#vz-clear').addEventListener('click', () => {
-    schoolSel.value = ''
-    sectionSel.value = ''
-    gradoSel.value = ''
-    ejeSel.value = ''
-    saberSel.value = ''
-    searchInput.value = ''
-    updateSections()
-    renderHeatmap()
+  selPeriodo.addEventListener('change', () => {
+    if (selPeriodo.value) {
+      cargarSecciones()
+    } else {
+      selSeccion.innerHTML = '<option value="">Seleccione un periodo</option>'
+      selSeccion.disabled = true
+      searchInput.disabled = true
+      body.innerHTML = ''
+    }
+    selSeccion.value = ''
+    body.innerHTML = ''
   })
 
-  // Pre-fill from navigation params (e.g. alert click → visualizaciones)
-  if (params.estudiante) {
-    searchInput.value = params.estudiante
-  }
+  selSeccion.addEventListener('change', () => {
+    if (selPeriodo.value && selSeccion.value) {
+      cargarHeatmap(Number(selPeriodo.value), Number(selSeccion.value))
+    } else {
+      body.innerHTML = ''
+    }
+  })
 
-  updateSections()
-  renderHeatmap()
+  searchInput.addEventListener('input', () => {
+    const wrap = container.querySelector('#heatmap-wrap')
+    if (wrap && wrap._dibujar) wrap._dibujar(searchInput.value.toLowerCase().trim())
+  })
+
+  // ── Mapa de calor ─────────────────────────────────────────────────────────
+  async function cargarHeatmap(periodoId, seccionId) {
+    const periodo = periodos.find(p => p.id === periodoId)
+    const seccion = secciones.find(s => s.id === seccionId)
+
+    body.innerHTML = `<div style="text-align:center;padding:40px;color:var(--text-muted)">⏳ Cargando datos…</div>`
+    searchInput.disabled = true
+
+    try {
+      const [matriculas, promedios] = await Promise.all([
+        getMatriculasBySeccion(seccionId),
+        getPromediosSeccionSaber(seccionId, periodoId).catch(() => []),
+      ])
+
+      // Construir columnas (union de todos los ejes evaluados)
+      const colMap   = new Map()
+      const tipoMeta = new Map()
+
+      for (const res of promedios) {
+        for (const ts of (res.promediosPorTipoSaber || [])) {
+          tipoMeta.set(ts.tipoSaberId, ts.tipoSaberNombre)
+          for (const eje of (ts.promediosPorEje || [])) {
+            const key = `${ts.tipoSaberId}-${eje.ejeTemaaticoId}`
+            if (!colMap.has(key)) colMap.set(key, {
+              key,
+              tipoSaberId:     ts.tipoSaberId,
+              tipoSaberNombre: ts.tipoSaberNombre,
+              ejeTemaaticoId:  eje.ejeTemaaticoId,
+              ejeNombre:       eje.ejeNombre,
+            })
+          }
+        }
+      }
+
+      const columnas = [...colMap.values()]
+        .sort((a, b) => a.tipoSaberId - b.tipoSaberId || a.ejeTemaaticoId - b.ejeTemaaticoId)
+
+      // Agrupar por tipo saber
+      const grupos = []
+      for (const col of columnas) {
+        const last = grupos[grupos.length - 1]
+        if (!last || last.tipoSaberId !== col.tipoSaberId)
+          grupos.push({ tipoSaberId: col.tipoSaberId, tipoSaberNombre: col.tipoSaberNombre, cols: [col] })
+        else last.cols.push(col)
+      }
+
+      // Lookup de scores
+      const lookup = {}
+      const promedioGlobalPorEst = {}
+      const alertasPorEst = {}
+      for (const res of promedios) {
+        lookup[res.estudianteId] = {}
+        promedioGlobalPorEst[res.estudianteId] = res.promedioGlobal
+        alertasPorEst[res.estudianteId] = {
+          altas:  res.totalAlertasAltas  || 0,
+          medias: res.totalAlertasMedias || 0,
+        }
+        for (const ts of (res.promediosPorTipoSaber || [])) {
+          for (const eje of (ts.promediosPorEje || [])) {
+            const key = `${ts.tipoSaberId}-${eje.ejeTemaaticoId}`
+            lookup[res.estudianteId][key] = {
+              promedio:    eje.promedio !== null ? parseFloat(eje.promedio) : null,
+              nivelAlerta: eje.nivelAlerta,
+            }
+          }
+        }
+      }
+
+      const todos = matriculas.map(m => ({
+        id:     m.estudianteId,
+        nombre: m.estudianteNombreCompleto,
+      }))
+
+      // Promedio por columna (fila de totales)
+      const colPromedios = {}
+      for (const col of columnas) {
+        const vals = todos.map(e => lookup[e.id]?.[col.key]?.promedio).filter(v => v !== null && v !== undefined)
+        colPromedios[col.key] = vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : null
+      }
+
+      // Sin datos
+      if (!columnas.length) {
+        body.innerHTML = `
+          <div class="card" style="text-align:center;padding:48px 20px">
+            <div style="font-size:48px;margin-bottom:12px">📊</div>
+            <h3 style="margin:0 0 8px">Sin evaluaciones por saber</h3>
+            <p style="color:var(--text-muted);margin:0">
+              No hay evaluaciones registradas para <strong>${seccion?.nombre}</strong>
+              en <strong>${periodo?.nombre}</strong>.<br>
+              Registre evaluaciones en <em>Eval. por Saber</em> para ver el mapa.
+            </p>
+          </div>`
+        searchInput.disabled = true
+        return
+      }
+
+      searchInput.disabled = false
+
+      // Leyenda + tabla
+      body.innerHTML = `
+        <div style="display:flex;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;gap:8px;margin-bottom:12px">
+          <div style="font-size:13px;color:var(--text-muted)">
+            ${todos.length} estudiante${todos.length !== 1 ? 's' : ''} · ${columnas.length} eje${columnas.length !== 1 ? 's' : ''} evaluado${columnas.length !== 1 ? 's' : ''}
+          </div>
+          <div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap;font-size:12px">
+            <span style="font-weight:700;color:var(--text-muted);font-size:11px;text-transform:uppercase;letter-spacing:.05em">Escala:</span>
+            ${Object.entries(ALERTA_COLOR).filter(([k]) => k !== 'null').map(([, v]) => `
+              <div style="display:flex;align-items:center;gap:5px">
+                <div style="width:22px;height:16px;border-radius:3px;background:${v.bg};border:1px solid ${v.color}30"></div>
+                <span>${v.label}</span>
+              </div>`).join('')}
+            <div style="display:flex;align-items:center;gap:5px">
+              <div style="width:22px;height:16px;border-radius:3px;background:#f3f4f6"></div>
+              <span>Sin datos</span>
+            </div>
+          </div>
+        </div>
+        <div class="card" style="overflow-x:auto;padding:16px">
+          <div id="heatmap-wrap"></div>
+        </div>
+        <p style="margin-top:10px;font-size:11px;color:var(--text-muted)">
+          * Promedios de todas las evaluaciones por saber del periodo. Celdas grises = aún sin evaluar.
+        </p>
+      `
+
+      const wrap = body.querySelector('#heatmap-wrap')
+      const TIPO_COLORS = ['#7c3aed', '#0891b2', '#d97706']
+
+      function dibujarTabla(filtro) {
+        const estudiantes = filtro
+          ? todos.filter(e => e.nombre.toLowerCase().includes(filtro))
+          : todos
+
+        if (!estudiantes.length) {
+          wrap.innerHTML = '<p class="empty">No hay estudiantes con ese nombre.</p>'
+          return
+        }
+
+        const cabGrupos = grupos.map((g, gi) => `
+          <th colspan="${g.cols.length}" style="
+            text-align:center;padding:8px 6px;font-size:11px;font-weight:700;
+            background:${TIPO_COLORS[gi % TIPO_COLORS.length]}18;
+            color:${TIPO_COLORS[gi % TIPO_COLORS.length]};
+            border-bottom:2px solid ${TIPO_COLORS[gi % TIPO_COLORS.length]};
+            white-space:nowrap;
+          ">${g.tipoSaberNombre}</th>`).join('')
+
+        const cabEjes = grupos.flatMap((g, gi) =>
+          g.cols.map(col => `
+            <th title="${col.ejeNombre}" style="
+              padding:6px 3px;font-size:10px;font-weight:600;text-align:center;
+              color:${TIPO_COLORS[gi % TIPO_COLORS.length]};
+              min-width:60px;max-width:60px;word-break:break-word;line-height:1.3;
+              border-bottom:none;background:transparent;
+            ">
+              <div style="max-height:48px;overflow:hidden;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical">${col.ejeNombre}</div>
+            </th>`)
+        ).join('')
+
+        const filas = estudiantes.map(est => {
+          const scores  = lookup[est.id] || {}
+          const global  = promedioGlobalPorEst[est.id]
+          const alertas = alertasPorEst[est.id] || { altas: 0, medias: 0 }
+
+          const celdas = grupos.flatMap(g =>
+            g.cols.map(col => {
+              const d   = scores[col.key]
+              const val = d?.promedio ?? null
+              const c   = colorFromValue(val)
+              return `
+                <td style="padding:3px;text-align:center">
+                  <div style="
+                    background:${c.bg};color:${c.color};
+                    width:56px;height:32px;border-radius:5px;
+                    display:flex;align-items:center;justify-content:center;
+                    font-size:12px;font-weight:700;margin:0 auto;
+                  " title="${col.ejeNombre}: ${fmt(val)}">${fmt(val)}</div>
+                </td>`
+            })
+          ).join('')
+
+          const gC = colorFromValue(global !== undefined ? parseFloat(global) : null)
+          const alertaBadges = [
+            alertas.altas  > 0 ? `<span style="background:#fee2e2;color:#dc2626;font-size:10px;font-weight:700;padding:1px 6px;border-radius:10px;white-space:nowrap">${alertas.altas}🔴</span>` : '',
+            alertas.medias > 0 ? `<span style="background:#fef3c7;color:#d97706;font-size:10px;font-weight:700;padding:1px 6px;border-radius:10px;white-space:nowrap">${alertas.medias}🟡</span>` : '',
+          ].filter(Boolean).join(' ')
+
+          return `
+            <tr style="transition:background .1s" onmouseover="this.style.background='#f8faff'" onmouseout="this.style.background=''">
+              <td style="padding:8px 12px;font-weight:500;white-space:nowrap;min-width:160px;font-size:13px">
+                ${est.nombre}
+                ${alertaBadges ? `<div style="margin-top:3px;display:flex;gap:4px">${alertaBadges}</div>` : ''}
+              </td>
+              ${celdas}
+              <td style="padding:6px 10px;text-align:center">
+                <div style="
+                  background:${gC.bg};color:${gC.color};
+                  padding:4px 10px;border-radius:20px;
+                  font-size:12px;font-weight:700;display:inline-block;white-space:nowrap;
+                ">${fmt(global ?? null)}</div>
+              </td>
+            </tr>`
+        }).join('')
+
+        const filaTotales = grupos.flatMap(g =>
+          g.cols.map(col => {
+            const v = colPromedios[col.key]
+            const c = colorFromValue(v)
+            return `
+              <td style="padding:4px 3px;text-align:center;background:#f8faff">
+                <div style="
+                  background:${c.bg};color:${c.color};
+                  width:56px;height:26px;border-radius:5px;
+                  display:flex;align-items:center;justify-content:center;
+                  font-size:11px;font-weight:700;margin:0 auto;
+                ">${fmt(v)}</div>
+              </td>`
+          })
+        ).join('')
+
+        const totalGlobal = (() => {
+          const vals = todos.map(e => promedioGlobalPorEst[e.id]).filter(v => v !== undefined && v !== null)
+          return vals.length ? vals.reduce((a, b) => a + parseFloat(b), 0) / vals.length : null
+        })()
+        const tGC = colorFromValue(totalGlobal)
+
+        wrap.innerHTML = `
+          <table style="border-collapse:separate;border-spacing:2px;font-size:12px;width:100%">
+            <thead>
+              <tr>
+                <th style="text-align:left;padding:8px 12px;background:transparent;border-bottom:none;min-width:160px"></th>
+                ${cabGrupos}
+                <th style="padding:8px;background:transparent;border-bottom:none;font-size:11px;color:var(--text-muted);text-align:center;white-space:nowrap">Global</th>
+              </tr>
+              <tr>
+                <th style="background:transparent;border-bottom:1px solid #e5e7eb"></th>
+                ${cabEjes}
+                <th style="background:transparent;border-bottom:1px solid #e5e7eb"></th>
+              </tr>
+            </thead>
+            <tbody>
+              ${filas}
+              <tr style="background:#f8faff;border-top:2px solid #e5e7eb">
+                <td style="padding:8px 12px;font-size:11px;font-weight:700;color:var(--text-muted)">Promedio del grupo</td>
+                ${filaTotales}
+                <td style="padding:6px 10px;text-align:center">
+                  <div style="
+                    background:${tGC.bg};color:${tGC.color};
+                    padding:4px 10px;border-radius:20px;
+                    font-size:12px;font-weight:700;display:inline-block;
+                  ">${fmt(totalGlobal)}</div>
+                </td>
+              </tr>
+            </tbody>
+          </table>`
+      }
+
+      wrap._dibujar = dibujarTabla
+      dibujarTabla('')
+
+    } catch (e) {
+      body.innerHTML = `<div class="card" style="color:#dc2626">Error cargando datos: ${e.message}</div>`
+      searchInput.disabled = true
+    }
+  }
 }

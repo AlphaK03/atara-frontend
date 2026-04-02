@@ -1,61 +1,63 @@
-import { extraerPIAD } from '../api.js'
+/**
+ * Importar Lista PIAD
+ *
+ * Campos del PDF que se mapean a la BD:
+ *   cedula           → estudiantes.identificacion   (requerido)
+ *   primerApellido   → estudiantes.apellido1         (requerido)
+ *   segundoApellido  → estudiantes.apellido2         (opcional)
+ *   nombre           → estudiantes.nombre            (requerido)
+ *
+ * Campos del PDF que NO se guardan (se muestran solo como referencia):
+ *   tipoAdecuacion   — sin columna en la BD actual
+ *   nivel / grupo    — referencia para sección (el usuario elige la sección destino)
+ *   fechaMatricula   — la fecha de matrícula se toma del campo del formulario
+ *
+ * Al guardar:
+ *   1. POST /api/estudiantes  por cada fila
+ *   2. POST /api/matriculas   para enrollarlos en la sección seleccionada
+ */
 
-const TIPOS_ADECUACION = [
-  'Sin adecuación',
-  'Adecuación de acceso',
-  'Adecuación no significativa',
-  'Adecuación significativa',
-]
+import {
+  extraerPIAD,
+  getAnioLectivoActivo,
+  getSecciones,
+  createEstudiante,
+  createMatricula,
+  getNiveles,
+  getCentros,
+  getDocentes,
+  createSeccion,
+} from '../api.js'
 
-const NIVELES = ['Primero', 'Segundo', 'Tercero', 'Cuarto', 'Quinto', 'Sexto']
+export async function renderImportarPiad(container) {
+  // Cargar datos iniciales en paralelo
+  let secciones = [], anioActivo = null, niveles = [], centros = [], docentes = []
+  try {
+    anioActivo = await getAnioLectivoActivo()
+    ;[secciones, niveles, centros, docentes] = await Promise.all([
+      getSecciones(anioActivo.id),
+      getNiveles(),
+      getCentros(),
+      getDocentes(),
+    ])
+  } catch { /* no bloquea la carga */ }
 
-function opcionesAdecuacion(selected) {
-  return TIPOS_ADECUACION.map(t =>
-    `<option value="${t}" ${t === selected ? 'selected' : ''}>${t}</option>`
-  ).join('')
-}
+  const buildOpcionesSecciones = (lista) =>
+    lista.map(s =>
+      `<option value="${s.id}">${s.nivelGrado ? s.nivelGrado + '° — ' : ''}${s.nombre} · ${s.centroNombre || ''}${s.docenteNombreCompleto ? ' (' + s.docenteNombreCompleto + ')' : ''}</option>`
+    ).join('')
 
-function opcionesNivel(selected) {
-  return NIVELES.map(n =>
-    `<option value="${n}" ${n === selected ? 'selected' : ''}>${n}</option>`
-  ).join('')
-}
-
-function filaEditable(est) {
-  return `
-    <tr data-num="${est.numero}">
-      <td style="text-align:center;color:#888;width:36px">${est.numero}</td>
-      <td style="width:130px"><input class="cell-input" name="cedula"          value="${est.cedula          || ''}" /></td>
-      <td style="width:150px"><input class="cell-input" name="primerApellido"  value="${est.primerApellido  || ''}" /></td>
-      <td style="width:150px"><input class="cell-input" name="segundoApellido" value="${est.segundoApellido || ''}" /></td>
-      <td style="width:190px"><input class="cell-input" name="nombre"          value="${est.nombre          || ''}" /></td>
-      <td style="width:195px">
-        <select class="cell-select" name="tipoAdecuacion">
-          ${opcionesAdecuacion(est.tipoAdecuacion)}
-        </select>
-      </td>
-      <td style="width:100px">
-        <select class="cell-select" name="nivel">
-          ${opcionesNivel(est.nivel)}
-        </select>
-      </td>
-      <td style="width:65px"><input class="cell-input" name="grupo" type="number" min="1" value="${est.grupo}" /></td>
-      <td style="width:105px"><input class="cell-input" name="fechaMatricula" value="${est.fechaMatricula || ''}" /></td>
-    </tr>
-  `
-}
-
-export function renderImportarPiad(container) {
   container.innerHTML = `
     <h1>Importar Lista PIAD</h1>
     <p class="page-desc">
-      Sube el PDF de Lista PIAD generado por SIGCE. El sistema extrae los datos por OCR
-      y te permite revisarlos y corregirlos antes de guardar.
+      Sube el PDF de Lista PIAD generado por SIGCE. Solo se importan los campos compatibles
+      con la base de datos: <strong>cédula, apellidos y nombre</strong>.
+      El tipo de adecuación y la fecha de matrícula del PDF se ignoran.
     </p>
 
+    <!-- Paso 1: subir archivo -->
     <div class="card">
       <h2>1. Seleccionar archivo</h2>
-
       <div id="drop-zone">
         <div id="drop-inner">
           <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#aaa" stroke-width="1.5">
@@ -69,142 +71,185 @@ export function renderImportarPiad(container) {
         </div>
         <input type="file" id="file-input" accept=".pdf,application/pdf" style="display:none" />
       </div>
-
       <div id="upload-msg" style="margin-top:12px"></div>
-
       <div class="btn-row" style="margin-top:16px">
         <button id="btn-extraer" class="btn btn-primary" disabled>Extraer datos</button>
       </div>
     </div>
 
+    <!-- Paso 2: revisar y guardar -->
     <div id="resultado-card" class="card" style="display:none">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
-        <h2 style="margin:0">2. Revisar y corregir</h2>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:10px">
+        <h2 style="margin:0">2. Revisar y guardar</h2>
         <span id="conteo-badge" class="badge badge-green"></span>
       </div>
-      <p style="color:#666;font-size:13px;margin-bottom:16px">
-        Puedes editar cualquier campo directamente en la tabla antes de guardar.
-      </p>
 
-      <div class="table-wrap" style="overflow-x:auto">
-        <table id="tabla-piad" style="table-layout:fixed;width:100%;min-width:1130px">
-          <colgroup>
-            <col style="width:36px" />
-            <col style="width:130px" />
-            <col style="width:150px" />
-            <col style="width:150px" />
-            <col style="width:190px" />
-            <col style="width:195px" />
-            <col style="width:100px" />
-            <col style="width:65px" />
-            <col style="width:105px" />
-          </colgroup>
+      <!-- Aviso de campos ignorados -->
+      <div style="
+        background:#fffbeb;border:1px solid #fde68a;border-radius:8px;
+        padding:10px 14px;margin-bottom:16px;font-size:12px;color:#92400e;
+        display:flex;align-items:flex-start;gap:8px
+      ">
+        <span style="font-size:16px;flex-shrink:0">ℹ️</span>
+        <span>
+          <strong>Campos ignorados del PDF:</strong> Tipo de adecuación y Fecha de matrícula —
+          no tienen columna en la base de datos actual. El nivel y grupo aparecen como referencia pero no se guardan en el estudiante.
+        </span>
+      </div>
+
+      <!-- Sección destino + fecha matrícula -->
+      <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-end;margin-bottom:8px">
+        <div class="form-group" style="min-width:300px;margin-bottom:0">
+          <label>Sección destino <span style="color:#dc2626">*</span></label>
+          <select id="sel-seccion-destino">
+            <option value="">— Seleccione una sección —</option>
+            ${buildOpcionesSecciones(secciones)}
+            <option value="__nueva__" style="color:#2563eb;font-weight:600">+ Crear nueva sección…</option>
+          </select>
+        </div>
+        <div class="form-group" style="min-width:160px;margin-bottom:0">
+          <label>Fecha de matrícula</label>
+          <input type="date" id="fecha-matricula" value="${new Date().toISOString().split('T')[0]}">
+        </div>
+      </div>
+
+      <!-- Panel "crear nueva sección" -->
+      <div id="panel-nueva-seccion" style="display:none;
+        background:#f0f9ff;border:1px solid #bae6fd;border-radius:10px;
+        padding:20px;margin-bottom:16px;margin-top:4px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+          <h3 style="margin:0;font-size:15px;color:#0369a1">Nueva sección</h3>
+          <button id="btn-cerrar-nueva-seccion" style="
+            border:none;background:none;cursor:pointer;color:#64748b;
+            font-size:20px;line-height:1;padding:0 4px" title="Cancelar">×</button>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:16px">
+
+          <div class="form-group" style="margin-bottom:0">
+            <label>Nombre de la sección <span style="color:#dc2626">*</span>
+              <span style="font-size:11px;color:#64748b;font-weight:400"> (ej. A, B, C)</span>
+            </label>
+            <input type="text" id="ns-nombre" placeholder="A" maxlength="10"
+              style="text-transform:uppercase">
+          </div>
+
+          <div class="form-group" style="margin-bottom:0">
+            <label>Nivel (grado) <span style="color:#dc2626">*</span></label>
+            <select id="ns-nivel">
+              <option value="">— Seleccione —</option>
+              ${niveles.map(n => `<option value="${n.id}">${n.numeroGrado}° — ${n.nombre}</option>`).join('')}
+            </select>
+          </div>
+
+          <div class="form-group" style="margin-bottom:0">
+            <label>Centro educativo <span style="color:#dc2626">*</span></label>
+            <select id="ns-centro">
+              <option value="">— Seleccione —</option>
+              ${centros.map(c => `<option value="${c.id}">${c.nombre}${c.circuito ? ' (' + c.circuito + ')' : ''}</option>`).join('')}
+            </select>
+          </div>
+
+          <div class="form-group" style="margin-bottom:0">
+            <label>Docente encargado
+              <span style="font-size:11px;color:#64748b;font-weight:400"> (opcional)</span>
+            </label>
+            <select id="ns-docente">
+              <option value="">— Sin asignar —</option>
+              ${docentes.map(d => `<option value="${d.id}">${d.nombreCompleto}</option>`).join('')}
+            </select>
+          </div>
+
+          <div class="form-group" style="margin-bottom:0">
+            <label>Capacidad
+              <span style="font-size:11px;color:#64748b;font-weight:400"> (opcional)</span>
+            </label>
+            <input type="number" id="ns-capacidad" placeholder="30" min="1" max="60">
+          </div>
+
+        </div>
+        <div id="ns-error" style="margin-top:12px;font-size:13px;color:#dc2626"></div>
+        <div style="margin-top:16px;display:flex;gap:10px">
+          <button id="btn-crear-seccion" class="btn btn-primary">Crear sección</button>
+          <button id="btn-cancelar-nueva-seccion" class="btn btn-secondary">Cancelar</button>
+        </div>
+      </div>
+
+      <!-- Tabla -->
+      <p style="font-size:13px;color:var(--text-muted);margin-bottom:12px">
+        Puedes editar cualquier campo antes de guardar. Las columnas <em>Nivel</em> y <em>Grupo</em>
+        son solo referencia del PDF.
+      </p>
+      <div style="overflow-x:auto">
+        <table id="tabla-piad" style="width:100%;border-collapse:collapse;font-size:13px;min-width:700px">
           <thead>
-            <tr>
-              <th>#</th>
-              <th>Cédula</th>
-              <th>Primer Apellido</th>
-              <th>Segundo Apellido</th>
-              <th>Nombre(s)</th>
-              <th>Tipo Adecuación</th>
-              <th>Nivel</th>
-              <th>Grupo</th>
-              <th>F. Matrícula</th>
+            <tr style="background:#f9fafb;font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--text-muted)">
+              <th style="padding:8px 10px;text-align:center;width:36px">#</th>
+              <th style="padding:8px 10px;text-align:left;width:120px">Cédula <span style="color:#dc2626">*</span></th>
+              <th style="padding:8px 10px;text-align:left;width:150px">Apellido 1 <span style="color:#dc2626">*</span></th>
+              <th style="padding:8px 10px;text-align:left;width:150px">Apellido 2</th>
+              <th style="padding:8px 10px;text-align:left">Nombre(s) <span style="color:#dc2626">*</span></th>
+              <th style="padding:8px 10px;text-align:center;width:130px;color:#9ca3af">Nivel (ref.)</th>
+              <th style="padding:8px 10px;text-align:center;width:80px;color:#9ca3af">Grupo (ref.)</th>
+              <th style="padding:8px 10px;text-align:center;width:40px"></th>
             </tr>
           </thead>
           <tbody id="tbody-piad"></tbody>
         </table>
       </div>
 
+      <!-- Resultado del guardado -->
+      <div id="save-result" style="margin-top:14px"></div>
+
       <div class="btn-row" style="margin-top:20px">
-        <button class="btn btn-primary" disabled title="Función disponible cuando la base de datos esté lista">
-          Guardar en sistema
-        </button>
-        <span style="font-size:12px;color:#999;align-self:center">
-          — Guardado en base de datos pendiente de implementación
-        </span>
+        <button id="btn-guardar" class="btn btn-primary">Guardar en sistema</button>
+        <button id="btn-limpiar" class="btn btn-secondary">Nueva importación</button>
       </div>
     </div>
 
     <style>
       #drop-zone {
-        border: 2px dashed #d1d5db;
-        border-radius: 10px;
-        padding: 40px 24px;
-        text-align: center;
-        cursor: pointer;
-        transition: border-color 0.2s, background 0.2s;
+        border:2px dashed #d1d5db;border-radius:10px;padding:40px 24px;
+        text-align:center;cursor:pointer;transition:border-color .2s,background .2s;
       }
-      #drop-zone.drag-over { border-color: #3b82f6; background: #eff6ff; }
-      #drop-zone.has-file  { border-color: #10b981; background: #f0fdf4; }
-      #drop-inner p { margin: 8px 0 0; color: #555; }
-      .cell-input {
-        width: 100%;
-        border: 1px solid transparent;
-        border-radius: 4px;
-        padding: 4px 6px;
-        font-size: 13px;
-        background: transparent;
-        transition: border-color 0.15s, background 0.15s;
-        box-sizing: border-box;
-        white-space: nowrap;
-        overflow: visible;
+      #drop-zone.drag-over { border-color:#3b82f6;background:#eff6ff }
+      #drop-zone.has-file  { border-color:#10b981;background:#f0fdf4 }
+      #drop-inner p { margin:8px 0 0;color:#555 }
+      .ci {
+        width:100%;border:1px solid transparent;border-radius:4px;
+        padding:5px 7px;font-size:13px;background:transparent;
+        transition:border-color .15s,background .15s;box-sizing:border-box;
       }
-      .cell-input:hover, .cell-input:focus {
-        border-color: #93c5fd;
-        background: #fff;
-        outline: none;
-      }
-      .cell-select {
-        width: 100%;
-        border: 1px solid transparent;
-        border-radius: 4px;
-        padding: 4px 4px;
-        font-size: 13px;
-        background: transparent;
-        cursor: pointer;
-        box-sizing: border-box;
-      }
-      .cell-select:hover, .cell-select:focus {
-        border-color: #93c5fd;
-        background: #fff;
-        outline: none;
-      }
-      #tabla-piad th {
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
-      }
-      #tabla-piad td {
-        padding: 4px 6px;
-        vertical-align: middle;
-        overflow: visible;
-      }
+      .ci:hover,.ci:focus { border-color:#93c5fd;background:#fff;outline:none }
+      .ci.error { border-color:#fca5a5!important;background:#fff1f2!important }
+      #tabla-piad tbody tr:hover { background:#f8faff }
+      #tabla-piad tbody td { padding:3px 6px;vertical-align:middle;border-bottom:1px solid #f3f4f6 }
       #spinner {
-        display: inline-block;
-        width: 18px; height: 18px;
-        border: 3px solid #e5e7eb;
-        border-top-color: #3b82f6;
-        border-radius: 50%;
-        animation: spin 0.7s linear infinite;
-        vertical-align: middle;
-        margin-right: 8px;
+        display:inline-block;width:16px;height:16px;
+        border:2px solid #e5e7eb;border-top-color:#3b82f6;
+        border-radius:50%;animation:spin .7s linear infinite;
+        vertical-align:middle;margin-right:6px;
       }
-      @keyframes spin { to { transform: rotate(360deg); } }
+      @keyframes spin { to { transform:rotate(360deg) } }
     </style>
   `
 
-  const dropZone    = container.querySelector('#drop-zone')
-  const fileInput   = container.querySelector('#file-input')
-  const dropLabel   = container.querySelector('#drop-label')
-  const uploadMsg   = container.querySelector('#upload-msg')
-  const btnExtraer  = container.querySelector('#btn-extraer')
-  const resultCard  = container.querySelector('#resultado-card')
-  const tbodyPiad   = container.querySelector('#tbody-piad')
-  const conteoBadge = container.querySelector('#conteo-badge')
+  const dropZone     = container.querySelector('#drop-zone')
+  const fileInput    = container.querySelector('#file-input')
+  const dropLabel    = container.querySelector('#drop-label')
+  const uploadMsg    = container.querySelector('#upload-msg')
+  const btnExtraer   = container.querySelector('#btn-extraer')
+  const resultCard   = container.querySelector('#resultado-card')
+  const tbodyPiad    = container.querySelector('#tbody-piad')
+  const conteoBadge  = container.querySelector('#conteo-badge')
+  const btnGuardar   = container.querySelector('#btn-guardar')
+  const btnLimpiar   = container.querySelector('#btn-limpiar')
+  const saveResult   = container.querySelector('#save-result')
+  const selSeccion   = container.querySelector('#sel-seccion-destino')
+  const panelNueva   = container.querySelector('#panel-nueva-seccion')
 
   let archivoSeleccionado = null
 
+  // ── Selección de archivo ────────────────────────────────────────────────────
   function seleccionarArchivo(file) {
     if (!file) return
     if (file.type !== 'application/pdf') {
@@ -218,25 +263,100 @@ export function renderImportarPiad(container) {
     btnExtraer.disabled = false
   }
 
-  // Click en zona de drop
   dropZone.addEventListener('click', () => fileInput.click())
   fileInput.addEventListener('change', () => seleccionarArchivo(fileInput.files[0]))
-
-  // Drag & drop
-  dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag-over') })
-  dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'))
+  dropZone.addEventListener('dragover',  e => { e.preventDefault(); dropZone.classList.add('drag-over') })
+  dropZone.addEventListener('dragleave', ()  => dropZone.classList.remove('drag-over'))
   dropZone.addEventListener('drop', e => {
-    e.preventDefault()
-    dropZone.classList.remove('drag-over')
+    e.preventDefault(); dropZone.classList.remove('drag-over')
     seleccionarArchivo(e.dataTransfer.files[0])
   })
 
-  // Extraer
+  // ── Panel "Nueva sección" ───────────────────────────────────────────────────
+  selSeccion.addEventListener('change', () => {
+    if (selSeccion.value === '__nueva__') {
+      panelNueva.style.display = ''
+      container.querySelector('#ns-nombre').focus()
+    } else {
+      panelNueva.style.display = 'none'
+    }
+  })
+
+  function cerrarPanelNuevaSeccion() {
+    panelNueva.style.display = 'none'
+    // Volver a "Seleccione una sección" si no hay otra opción elegida
+    if (selSeccion.value === '__nueva__') {
+      selSeccion.value = ''
+    }
+  }
+
+  container.querySelector('#btn-cerrar-nueva-seccion').addEventListener('click', cerrarPanelNuevaSeccion)
+  container.querySelector('#btn-cancelar-nueva-seccion').addEventListener('click', cerrarPanelNuevaSeccion)
+
+  container.querySelector('#btn-crear-seccion').addEventListener('click', async () => {
+    const nsNombre    = container.querySelector('#ns-nombre').value.trim().toUpperCase()
+    const nsNivelId   = Number(container.querySelector('#ns-nivel').value)
+    const nsCentroId  = Number(container.querySelector('#ns-centro').value)
+    const nsDocenteId = container.querySelector('#ns-docente').value
+    const nsCapacidad = container.querySelector('#ns-capacidad').value
+    const nsError     = container.querySelector('#ns-error')
+    const btnCrear    = container.querySelector('#btn-crear-seccion')
+
+    nsError.textContent = ''
+
+    // Validar campos requeridos
+    if (!nsNombre) { nsError.textContent = 'El nombre de la sección es requerido (ej. A, B, C).'; return }
+    if (!nsNivelId)  { nsError.textContent = 'Selecciona el nivel (grado) de la sección.'; return }
+    if (!nsCentroId) { nsError.textContent = 'Selecciona el centro educativo.'; return }
+    if (!anioActivo?.id) { nsError.textContent = 'No se pudo obtener el año lectivo activo.'; return }
+
+    btnCrear.disabled = true
+    btnCrear.textContent = '⏳ Creando…'
+
+    try {
+      const payload = {
+        nombre:        nsNombre,
+        nivelId:       nsNivelId,
+        centroId:      nsCentroId,
+        anioLectivoId: anioActivo.id,
+        docenteId:     nsDocenteId ? Number(nsDocenteId) : null,
+        capacidad:     nsCapacidad ? Number(nsCapacidad) : null,
+      }
+      const nuevaSeccion = await createSeccion(payload)
+
+      // Agregar la nueva sección al selector y seleccionarla
+      secciones.push(nuevaSeccion)
+      const opt = document.createElement('option')
+      opt.value = nuevaSeccion.id
+      opt.textContent = `${nuevaSeccion.nivelGrado ? nuevaSeccion.nivelGrado + '° — ' : ''}${nuevaSeccion.nombre} · ${nuevaSeccion.centroNombre || ''}${nuevaSeccion.docenteNombreCompleto ? ' (' + nuevaSeccion.docenteNombreCompleto + ')' : ''}`
+
+      // Insertar antes del último option ("+ Crear nueva sección…")
+      const ultimaOpcion = selSeccion.querySelector('option[value="__nueva__"]')
+      selSeccion.insertBefore(opt, ultimaOpcion)
+      selSeccion.value = nuevaSeccion.id
+
+      panelNueva.style.display = 'none'
+
+      // Limpiar campos del panel para próxima vez
+      container.querySelector('#ns-nombre').value    = ''
+      container.querySelector('#ns-nivel').value     = ''
+      container.querySelector('#ns-centro').value    = ''
+      container.querySelector('#ns-docente').value   = ''
+      container.querySelector('#ns-capacidad').value = ''
+      container.querySelector('#ns-error').textContent = ''
+    } catch (err) {
+      nsError.textContent = `Error al crear sección: ${err.message}`
+    } finally {
+      btnCrear.disabled = false
+      btnCrear.textContent = 'Crear sección'
+    }
+  })
+
+  // ── Extracción ──────────────────────────────────────────────────────────────
   btnExtraer.addEventListener('click', async () => {
     if (!archivoSeleccionado) return
-
     btnExtraer.disabled = true
-    uploadMsg.innerHTML = '<div class="alert" style="background:#eff6ff;color:#1d4ed8;border:1px solid #bfdbfe"><span id="spinner"></span> Procesando PDF con OCR, esto puede tardar unos segundos...</div>'
+    uploadMsg.innerHTML = '<div class="alert" style="background:#eff6ff;color:#1d4ed8;border:1px solid #bfdbfe"><span id="spinner"></span> Procesando PDF con OCR, esto puede tardar unos segundos…</div>'
     resultCard.style.display = 'none'
 
     try {
@@ -248,15 +368,138 @@ export function renderImportarPiad(container) {
         return
       }
 
-      uploadMsg.innerHTML = '<div class="alert alert-success">Extracción completada. Revisa y corrige los datos antes de guardar.</div>'
+      uploadMsg.innerHTML = '<div class="alert alert-success">Extracción completada. Revisa los datos y selecciona la sección antes de guardar.</div>'
       conteoBadge.textContent = `${datos.length} estudiante${datos.length !== 1 ? 's' : ''} extraído${datos.length !== 1 ? 's' : ''}`
       tbodyPiad.innerHTML = datos.map(filaEditable).join('')
+      saveResult.innerHTML = ''
       resultCard.style.display = ''
       resultCard.scrollIntoView({ behavior: 'smooth', block: 'start' })
-
     } catch (err) {
       uploadMsg.innerHTML = `<div class="alert alert-error">Error al extraer: ${err.message}</div>`
       btnExtraer.disabled = false
     }
   })
+
+  // ── Guardar ─────────────────────────────────────────────────────────────────
+  btnGuardar.addEventListener('click', async () => {
+    const seccionId = selSeccion.value && selSeccion.value !== '__nueva__' ? Number(selSeccion.value) : null
+    const fechaMat  = container.querySelector('#fecha-matricula').value
+
+    if (!seccionId) {
+      saveResult.innerHTML = '<div class="alert alert-error">Selecciona la sección destino antes de guardar.</div>'
+      return
+    }
+
+    // Leer filas de la tabla
+    const filas = [...tbodyPiad.querySelectorAll('tr')]
+    if (filas.length === 0) {
+      saveResult.innerHTML = '<div class="alert alert-error">No hay estudiantes en la tabla.</div>'
+      return
+    }
+
+    const estudiantes = filas.map(tr => ({
+      identificacion: tr.querySelector('[name=cedula]').value.trim(),
+      apellido1:      tr.querySelector('[name=primerApellido]').value.trim(),
+      apellido2:      tr.querySelector('[name=segundoApellido]').value.trim() || null,
+      nombre:         tr.querySelector('[name=nombre]').value.trim(),
+    }))
+
+    // Validación básica
+    let valido = true
+    filas.forEach((tr, i) => {
+      const e = estudiantes[i]
+      ;['cedula','primerApellido','nombre'].forEach(campo => {
+        const input = tr.querySelector(`[name=${campo}]`)
+        const val = input.value.trim()
+        input.classList.toggle('error', !val)
+        if (!val) valido = false
+      })
+    })
+
+    if (!valido) {
+      saveResult.innerHTML = '<div class="alert alert-error">Hay campos requeridos vacíos (marcados en rojo). Corrígelos antes de continuar.</div>'
+      return
+    }
+
+    btnGuardar.disabled = true
+    btnGuardar.textContent = '⏳ Guardando…'
+    saveResult.innerHTML = ''
+
+    let ok = 0, errores = []
+
+    for (const est of estudiantes) {
+      try {
+        const creado = await createEstudiante(est)
+        if (creado?.id) {
+          await createMatricula({
+            estudianteId:   creado.id,
+            seccionId,
+            anioLectivoId: anioActivo?.id,
+            fechaMatricula: fechaMat || new Date().toISOString().split('T')[0],
+          })
+          ok++
+        }
+      } catch (e) {
+        errores.push(`${est.nombre} ${est.apellido1}: ${e.message}`)
+      }
+    }
+
+    btnGuardar.disabled = false
+    btnGuardar.textContent = 'Guardar en sistema'
+
+    if (errores.length === 0) {
+      saveResult.innerHTML = `
+        <div class="alert alert-success">
+          ✅ ${ok} estudiante${ok !== 1 ? 's' : ''} guardado${ok !== 1 ? 's' : ''} y matriculado${ok !== 1 ? 's' : ''} correctamente.
+        </div>`
+    } else {
+      saveResult.innerHTML = `
+        <div class="alert alert-success" style="margin-bottom:8px">
+          ✅ ${ok} estudiante${ok !== 1 ? 's' : ''} guardado${ok !== 1 ? 's' : ''} correctamente.
+        </div>
+        <div class="alert alert-error">
+          ⚠️ ${errores.length} error${errores.length !== 1 ? 'es' : ''}:<br>
+          ${errores.map(e => `• ${e}`).join('<br>')}
+        </div>`
+    }
+  })
+
+  // ── Nueva importación ───────────────────────────────────────────────────────
+  btnLimpiar.addEventListener('click', () => {
+    archivoSeleccionado = null
+    fileInput.value = ''
+    dropLabel.textContent = 'Arrastra el PDF aquí o haz clic para seleccionar'
+    dropZone.classList.remove('has-file', 'drag-over')
+    uploadMsg.innerHTML = ''
+    btnExtraer.disabled = true
+    resultCard.style.display = 'none'
+    tbodyPiad.innerHTML = ''
+    saveResult.innerHTML = ''
+    panelNueva.style.display = 'none'
+  })
+}
+
+// ── Fila editable ─────────────────────────────────────────────────────────────
+function filaEditable(est) {
+  const nivelBadge = est.nivel
+    ? `<span style="font-size:11px;background:#f3f4f6;color:#6b7280;padding:2px 7px;border-radius:20px">${est.nivel}</span>`
+    : '—'
+  const grupoBadge = est.grupo
+    ? `<span style="font-size:11px;background:#f3f4f6;color:#6b7280;padding:2px 7px;border-radius:20px">${est.grupo}</span>`
+    : '—'
+
+  return `
+    <tr>
+      <td style="text-align:center;color:#9ca3af;font-size:12px">${est.numero}</td>
+      <td><input class="ci" name="cedula"          value="${est.cedula          || ''}"></td>
+      <td><input class="ci" name="primerApellido"  value="${est.primerApellido  || ''}"></td>
+      <td><input class="ci" name="segundoApellido" value="${est.segundoApellido || ''}"></td>
+      <td><input class="ci" name="nombre"          value="${est.nombre          || ''}"></td>
+      <td style="text-align:center">${nivelBadge}</td>
+      <td style="text-align:center">${grupoBadge}</td>
+      <td style="text-align:center">
+        <button onclick="this.closest('tr').remove()" title="Eliminar fila"
+          style="border:none;background:none;cursor:pointer;color:#9ca3af;font-size:16px;padding:2px 4px">×</button>
+      </td>
+    </tr>`
 }

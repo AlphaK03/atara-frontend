@@ -1,14 +1,20 @@
-import { getEstudiantes, getEstudiante, createEstudiante, updateEstudiante } from '../api.js'
+import {
+  getEstudiantes, getEstudiante,
+  createEstudiante, updateEstudiante, deleteEstudiante,
+  getAccessToken,
+} from '../api.js'
+import { showConfirm, backendMsg } from '../confirm.js'
 
-const GENEROS = ['MASCULINO', 'FEMENINO', 'OTRO']
-const ESTADOS = ['', 'ACTIVO', 'INACTIVO', 'GRADUADO', 'TRASLADADO']
+const GENEROS        = ['MASCULINO', 'FEMENINO', 'OTRO']
+const ESTADOS        = ['ACTIVO', 'INACTIVO', 'GRADUADO', 'TRASLADADO']
+const FILTER_ESTADOS = ['', ...ESTADOS]
 
 function estadoBadge(estado) {
   const map = { ACTIVO: 'badge-green', INACTIVO: 'badge-red', GRADUADO: 'badge-blue', TRASLADADO: 'badge-yellow' }
   return `<span class="badge ${map[estado] || 'badge-gray'}">${estado || '—'}</span>`
 }
 
-function studentForm(s = {}) {
+function studentFormHtml(s = {}, includeEstado = false) {
   return `
     <div class="form-grid">
       <div class="form-group">
@@ -38,6 +44,13 @@ function studentForm(s = {}) {
           ${GENEROS.map(g => `<option value="${g}" ${s.genero === g ? 'selected' : ''}>${g}</option>`).join('')}
         </select>
       </div>
+      ${includeEstado ? `
+      <div class="form-group">
+        <label>Estado</label>
+        <select name="estado">
+          ${ESTADOS.map(e => `<option value="${e}" ${s.estado === e ? 'selected' : ''}>${e}</option>`).join('')}
+        </select>
+      </div>` : ''}
       <div class="form-group">
         <label>Nombre acudiente</label>
         <input name="nombreAcudiente" value="${s.nombreAcudiente || ''}" />
@@ -57,14 +70,16 @@ function studentForm(s = {}) {
 export async function renderEstudiantes(container) {
   container.innerHTML = `
     <h1>Estudiantes</h1>
-    <p class="page-desc">Listado de estudiantes. Puedes crear, editar y filtrar por estado.</p>
+    <p class="page-desc">
+      Gestión de estudiantes. Puedes crear, editar, cambiar estado y eliminar registros.
+    </p>
 
     <div class="card">
       <h2 class="collapsible-trigger open" id="form-toggle">Registrar estudiante</h2>
       <div id="form-body">
         <div id="form-msg"></div>
         <form id="create-form">
-          ${studentForm()}
+          ${studentFormHtml()}
           <div class="btn-row">
             <button type="submit" class="btn btn-primary">Crear estudiante</button>
           </div>
@@ -77,7 +92,7 @@ export async function renderEstudiantes(container) {
         <h2 style="margin:0">Listado</h2>
         <div style="display:flex;gap:8px;align-items:center">
           <select id="estado-filter">
-            ${ESTADOS.map(e => `<option value="${e}">${e || 'Todos los estados'}</option>`).join('')}
+            ${FILTER_ESTADOS.map(e => `<option value="${e}">${e || 'Todos los estados'}</option>`).join('')}
           </select>
           <button class="btn btn-secondary btn-sm" id="refresh-btn">Actualizar</button>
         </div>
@@ -86,7 +101,10 @@ export async function renderEstudiantes(container) {
       <div class="table-wrap">
         <table>
           <thead>
-            <tr><th>ID</th><th>Identificación</th><th>Nombre completo</th><th>Acudiente</th><th>Estado</th><th>Acción</th></tr>
+            <tr>
+              <th>ID</th><th>Identificación</th><th>Nombre completo</th>
+              <th>Acudiente</th><th>Estado</th><th>Acciones</th>
+            </tr>
           </thead>
           <tbody id="tbody"></tbody>
         </table>
@@ -94,26 +112,40 @@ export async function renderEstudiantes(container) {
     </div>
 
     <!-- Edit modal -->
-    <div id="edit-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:100;align-items:center;justify-content:center;">
-      <div style="background:#fff;border-radius:10px;padding:28px;width:600px;max-width:95vw;max-height:90vh;overflow-y:auto;">
-        <h2 style="margin-bottom:16px">Editar estudiante</h2>
+    <div id="edit-overlay"
+      style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.4);
+             z-index:100;align-items:center;justify-content:center;">
+      <div style="background:#fff;border-radius:10px;padding:28px;width:640px;
+                  max-width:95vw;max-height:90vh;overflow-y:auto;">
+        <h2 style="margin-bottom:4px">Editar estudiante</h2>
+        <p style="font-size:12px;color:#6b7280;margin:0 0 16px">
+          El campo <strong>Estado</strong> permite cambiar la situación del estudiante sin eliminarlo.
+        </p>
         <div id="edit-msg"></div>
         <form id="edit-form"></form>
         <div class="btn-row">
-          <button class="btn btn-primary" id="edit-save">Guardar</button>
+          <button class="btn btn-primary" id="edit-save">Guardar cambios</button>
           <button class="btn btn-secondary" id="edit-cancel">Cancelar</button>
         </div>
       </div>
     </div>
+
+    <style>
+      .btn-danger {
+        background:#fee2e2;color:#dc2626;border:1px solid #fca5a5;
+        padding:4px 10px;border-radius:6px;font-size:12px;cursor:pointer;font-weight:500;
+      }
+      .btn-danger:hover { background:#fecaca }
+    </style>
   `
 
-  const tbody     = container.querySelector('#tbody')
-  const formMsg   = container.querySelector('#form-msg')
-  const listMsg   = container.querySelector('#list-msg')
+  const tbody       = container.querySelector('#tbody')
+  const formMsg     = container.querySelector('#form-msg')
+  const listMsg     = container.querySelector('#list-msg')
   const editOverlay = container.querySelector('#edit-overlay')
-  const editForm  = container.querySelector('#edit-form')
-  const editMsg   = container.querySelector('#edit-msg')
-  let editingId   = null
+  const editForm    = container.querySelector('#edit-form')
+  const editMsg     = container.querySelector('#edit-msg')
+  let editingId     = null
 
   container.querySelector('#form-toggle').addEventListener('click', e => {
     const open = e.target.classList.toggle('open')
@@ -123,36 +155,89 @@ export async function renderEstudiantes(container) {
   async function loadList() {
     const estado = container.querySelector('#estado-filter').value
     tbody.innerHTML = '<tr><td colspan="6" class="empty">Cargando...</td></tr>'
+    listMsg.innerHTML = ''
     try {
       const data = await getEstudiantes(estado || null)
       if (!data.length) {
         tbody.innerHTML = '<tr><td colspan="6" class="empty">Sin resultados.</td></tr>'
         return
       }
-      tbody.innerHTML = data.map(s => `
-        <tr>
-          <td>${s.id}</td>
-          <td>${s.identificacion}</td>
-          <td>${s.nombre} ${s.apellido1} ${s.apellido2 || ''}</td>
-          <td>${s.nombreAcudiente || '—'}</td>
-          <td>${estadoBadge(s.estado)}</td>
-          <td><button class="btn btn-sm btn-secondary edit-btn" data-id="${s.id}">Editar</button></td>
-        </tr>
-      `).join('')
+      tbody.innerHTML = data.map(s => {
+        const nombre = `${s.nombre} ${s.apellido1} ${s.apellido2 || ''}`.trim()
+        return `
+          <tr>
+            <td>${s.id}</td>
+            <td>${s.identificacion}</td>
+            <td>${nombre}</td>
+            <td>${s.nombreAcudiente || '—'}</td>
+            <td>${estadoBadge(s.estado)}</td>
+            <td style="white-space:nowrap;display:flex;gap:6px;align-items:center">
+              <button class="btn btn-sm btn-secondary edit-btn" data-id="${s.id}">
+                Editar
+              </button>
+              <button class="btn-danger delete-btn"
+                data-id="${s.id}" data-nombre="${nombre}">
+                Eliminar
+              </button>
+            </td>
+          </tr>
+        `
+      }).join('')
 
+      // Edit handlers
       tbody.querySelectorAll('.edit-btn').forEach(btn => {
         btn.addEventListener('click', async () => {
           try {
             const s = await getEstudiante(btn.dataset.id)
             editingId = s.id
-            editForm.innerHTML = studentForm(s)
-            editMsg.innerHTML = ''
+            editForm.innerHTML = studentFormHtml(s, true)  // includeEstado = true
+            editMsg.innerHTML  = ''
             editOverlay.style.display = 'flex'
           } catch (err) {
             listMsg.innerHTML = `<div class="alert alert-error">${err.message}</div>`
           }
         })
       })
+
+      // Delete handlers
+      tbody.querySelectorAll('.delete-btn').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          const nombre = btn.dataset.nombre
+          const ok = await showConfirm({
+            title: `¿Eliminar a ${nombre}?`,
+            message: `
+              <p>Esta acción es <strong>permanente</strong> y no se puede deshacer.</p>
+              <p style="margin-top:8px">Se eliminarán también todos los registros asociados:</p>
+              <ul style="margin:6px 0 0 20px;list-style:disc;color:#374151">
+                <li>Matrículas en secciones</li>
+                <li>Evaluaciones y calificaciones</li>
+                <li>Alertas temáticas generadas</li>
+              </ul>
+              <p style="margin-top:10px;color:#d97706">
+                💡 Considera cambiar el <strong>Estado</strong> a <em>INACTIVO</em>
+                o <em>TRASLADADO</em> para conservar el historial.
+              </p>
+            `,
+            confirmText: 'Sí, eliminar permanentemente',
+          })
+          if (!ok) return
+
+          btn.disabled = true
+          try {
+            await deleteEstudiante(btn.dataset.id)
+            if (!getAccessToken()) return  // sesión expirada → login mostrado automáticamente
+            listMsg.innerHTML = '<div class="alert alert-success">Estudiante eliminado correctamente.</div>'
+            await loadList()
+          } catch (err) {
+            listMsg.innerHTML = `
+              <div class="alert alert-error">
+                <strong>No se pudo eliminar.</strong> ${backendMsg(err)}
+              </div>`
+            btn.disabled = false
+          }
+        })
+      })
+
     } catch (err) {
       tbody.innerHTML = `<tr><td colspan="6" class="empty">${err.message}</td></tr>`
     }
@@ -161,10 +246,11 @@ export async function renderEstudiantes(container) {
   container.querySelector('#estado-filter').addEventListener('change', loadList)
   container.querySelector('#refresh-btn').addEventListener('click', loadList)
 
+  // Create form
   container.querySelector('#create-form').addEventListener('submit', async e => {
     e.preventDefault()
     formMsg.innerHTML = ''
-    const fd = new FormData(e.target)
+    const fd  = new FormData(e.target)
     const btn = e.target.querySelector('button[type=submit]')
     btn.disabled = true
     try {
@@ -180,17 +266,23 @@ export async function renderEstudiantes(container) {
     }
   })
 
+  // Edit modal — save
   container.querySelector('#edit-save').addEventListener('click', async () => {
     editMsg.innerHTML = ''
+    const saveBtn = container.querySelector('#edit-save')
+    saveBtn.disabled = true
     const fd = new FormData(editForm)
     try {
       const body = Object.fromEntries([...fd.entries()].filter(([, v]) => v !== ''))
-      await updateEstudiante(editingId, body)
+      const updated = await updateEstudiante(editingId, body)
+      if (!getAccessToken()) return  // sesión expirada → login mostrado automáticamente
       editOverlay.style.display = 'none'
-      listMsg.innerHTML = '<div class="alert alert-success">Estudiante actualizado.</div>'
+      listMsg.innerHTML = '<div class="alert alert-success">Estudiante actualizado correctamente.</div>'
       await loadList()
     } catch (err) {
       editMsg.innerHTML = `<div class="alert alert-error">${err.message}</div>`
+    } finally {
+      saveBtn.disabled = false
     }
   })
 
