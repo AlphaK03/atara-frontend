@@ -2,6 +2,7 @@ import {
   getAniosLectivos, getAnioLectivoActivo,
   getSecciones, createSeccion, updateSeccion, deleteSeccion,
   getNiveles, getCentros, getDocentes, getAccessToken,
+  getContextoUsuario,
 } from '../api.js'
 import { showConfirm, openModal, backendMsg } from '../confirm.js'
 
@@ -19,7 +20,7 @@ export async function renderSecciones(container) {
         <select id="sel-anio" style="min-width:140px">
           <option value="">Cargando…</option>
         </select>
-        <button class="btn btn-primary btn-sm" id="btn-nueva-seccion">+ Nueva sección</button>
+        <button class="btn btn-primary btn-sm" id="btn-nueva-seccion" style="display:none">+ Nueva sección</button>
       </div>
     </div>
 
@@ -53,15 +54,19 @@ export async function renderSecciones(container) {
   // Load catalogs in parallel; needed for create/edit forms
   let catalogos = { niveles: [], centros: [], docentes: [] }
   let anioActivo = null
+  let esAdmin = false
 
   try {
-    const [anios, niveles, centros, docentes, activo] = await Promise.all([
+    const [anios, niveles, centros, docentes, activo, ctx] = await Promise.all([
       getAniosLectivos(),
       getNiveles(),
       getCentros(),
       getDocentes(),
       getAnioLectivoActivo().catch(() => null),
+      getContextoUsuario().catch(() => null),
     ])
+    esAdmin = ctx?.rol === 'ADMIN'
+    if (esAdmin) container.querySelector('#btn-nueva-seccion').style.display = ''
     catalogos = { niveles, centros, docentes }
     anioActivo = activo
 
@@ -117,23 +122,29 @@ export async function renderSecciones(container) {
               <thead>
                 <tr>
                   <th>Nombre</th><th>Grado</th><th>Docente</th>
-                  <th>Capacidad</th><th>Acciones</th>
+                  <th>Estudiantes</th><th>Capacidad</th><th>Acciones</th>
                 </tr>
               </thead>
               <tbody>
-                ${lista.map(s => `
-                  <tr>
-                    <td><strong>${s.nombre}</strong></td>
+                ${lista.map(s => {
+                  const vacia = s.totalEstudiantes === 0
+                  const rowStyle = vacia
+                    ? 'background:#fff5f5;border-left:3px solid #fca5a5'
+                    : ''
+                  return `
+                  <tr style="${rowStyle}">
+                    <td><strong>${s.nombre}</strong>${vacia ? ' <span style="font-size:11px;color:#dc2626;font-weight:600">VACÍA</span>' : ''}</td>
                     <td>${s.nivelGrado ? s.nivelGrado + '°' : '—'}</td>
                     <td>${s.docenteNombreCompleto || '<span style="color:#9ca3af">Sin asignar</span>'}</td>
+                    <td style="${vacia ? 'color:#dc2626;font-weight:600' : ''}">${s.totalEstudiantes}</td>
                     <td>${s.capacidad ?? '—'}</td>
                     <td style="white-space:nowrap;display:flex;gap:6px">
                       <button class="btn-edit-sec" data-sec='${JSON.stringify(s)}'>Editar</button>
-                      <button class="btn-del-sec"
-                        data-id="${s.id}" data-nombre="${s.nombre}">Eliminar</button>
+                      ${esAdmin ? `<button class="btn-del-sec"
+                        data-id="${s.id}" data-nombre="${s.nombre}">Eliminar</button>` : ''}
                     </td>
-                  </tr>
-                `).join('')}
+                  </tr>`
+                }).join('')}
               </tbody>
             </table>
           </div>

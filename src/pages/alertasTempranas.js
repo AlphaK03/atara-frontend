@@ -11,6 +11,7 @@ import {
   getPeriodos,
   getSecciones,
   filtrarSeccionesPropias,
+  filtrarMateriasPropias,
   getMaterias,
   getAlertasTematicasSeccion,
   generarAlertasTematicasSeccion,
@@ -319,7 +320,8 @@ export async function renderAlertasTempranas(container) {
       getMaterias().catch(() => []),
     ])
     secciones = await filtrarSeccionesPropias(rawSecciones)
-    materiasList = allMaterias.filter(m => m.clave !== 'EDUCACION_FISICA')
+    const sinEdFisica = allMaterias.filter(m => m.clave !== 'EDUCACION_FISICA')
+    materiasList = await filtrarMateriasPropias(sinEdFisica)
     selPeriodo.innerHTML = '<option value="">— Seleccione un periodo —</option>' +
       periodos.map(p => `<option value="${p.id}">${p.nombre}${p.activo ? ' ★' : ''}</option>`).join('')
     selPeriodo.disabled = false

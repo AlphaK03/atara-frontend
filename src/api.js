@@ -114,8 +114,18 @@ export async function getContextoUsuario() {
  */
 export async function filtrarSeccionesPropias(secciones) {
   const ctx = await getContextoUsuario()
-  if (!ctx || ctx.rol !== 'DOCENTE' || !ctx.seccionIds?.length) return secciones
-  return secciones.filter(s => ctx.seccionIds.includes(s.id))
+  if (!ctx || ctx.rol !== 'DOCENTE') return secciones
+  return secciones.filter(s => ctx.seccionIds?.includes(s.id))
+}
+
+/**
+ * Filtra una lista de materias al alcance del usuario autenticado.
+ * ADMIN/COORDINADOR ven todas; DOCENTE solo las asignadas.
+ */
+export async function filtrarMateriasPropias(materias) {
+  const ctx = await getContextoUsuario()
+  if (!ctx || ctx.rol !== 'DOCENTE') return materias
+  return materias.filter(m => ctx.materiaIds?.includes(m.id))
 }
 
 // ── Periodos ───────────────────────────────────────────────────────────────

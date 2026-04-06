@@ -12,6 +12,7 @@ import {
   getPeriodos,
   getSecciones,
   filtrarSeccionesPropias,
+  filtrarMateriasPropias,
   getMatriculasBySeccion,
   getEvaluacionesSaberBySeccionPeriodo,
   getTiposSaber,
@@ -140,7 +141,8 @@ export function renderEvaluacionesSaber(container) {
     if (tiposSaber.length && materias.length) return
     let allMaterias
     ;[tiposSaber, allMaterias] = await Promise.all([getTiposSaber(), getMaterias()])
-    materias = allMaterias.filter(m => m.clave !== 'EDUCACION_FISICA')
+    const sinEdFisica = allMaterias.filter(m => m.clave !== 'EDUCACION_FISICA')
+    materias = await filtrarMateriasPropias(sinEdFisica)
     const allEjes = await getEjesTematicos()
     ejesPorMateriaTipo = {}
     for (const eje of allEjes) {
@@ -151,7 +153,6 @@ export function renderEvaluacionesSaber(container) {
     for (const k of Object.keys(ejesPorMateriaTipo)) {
       ejesPorMateriaTipo[k].sort((a, b) => (a.orden ?? 0) - (b.orden ?? 0))
     }
-    if (!materiaSel && materias.length) materiaSel = materias[0]
   }
 
   // ── Breadcrumb ────────────────────────────────────────────────────────────
@@ -349,6 +350,7 @@ export function renderEvaluacionesSaber(container) {
   // ── Carga de estudiantes y estado de evaluaciones ─────────────────────────
   async function cargarEstudiantes() {
     await ensureCatalogs()
+    materiaSel = materias[0] ?? null
     const [matriculas, evalsRaw] = await Promise.all([
       getMatriculasBySeccion(seccionSel.id),
       getEvaluacionesSaberBySeccionPeriodo(seccionSel.id, periodoSel.id).catch(() => []),

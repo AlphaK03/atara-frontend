@@ -15,6 +15,7 @@ import {
   getPeriodos,
   getSecciones,
   filtrarSeccionesPropias,
+  filtrarMateriasPropias,
   getPromediosSeccionSaber,
   getAlertasTematicasSeccion,
 } from '../api.js'
@@ -165,6 +166,7 @@ export async function renderReportes(container) {
       getMaterias(),
     ])
     secciones = await filtrarSeccionesPropias(seccionesRaw)
+    materias = await filtrarMateriasPropias(materias)
 
     selPeriodo.innerHTML = '<option value="">- Todos los periodos -</option>' +
       periodos.map(p => `<option value="${p.id}">${p.nombre}${p.activo ? ' *' : ''}</option>`).join('')
