@@ -142,10 +142,15 @@ export async function extraerPIAD(archivo) {
 }
 
 // ── Catálogos de Saberes ───────────────────────────────────────────────────
-export const getTiposSaber       = ()             => request('GET', '/catalogos/saberes/tipos')
-export const getEjesTematicos    = (tipoSaberId)  =>
-  request('GET', `/catalogos/saberes/ejes${tipoSaberId ? `?tipoSaberId=${tipoSaberId}` : ''}`)
-export const getNivelesDesempeno = ()             => request('GET', '/catalogos/saberes/niveles-desempeno')
+export const getTiposSaber       = ()                          => request('GET', '/catalogos/saberes/tipos')
+export const getMaterias         = ()                          => request('GET', '/catalogos/saberes/materias')
+export const getEjesTematicos    = (tipoSaberId, materiaId) => {
+  const params = []
+  if (materiaId)  params.push(`materiaId=${materiaId}`)
+  if (tipoSaberId) params.push(`tipoSaberId=${tipoSaberId}`)
+  return request('GET', `/catalogos/saberes/ejes${params.length ? '?' + params.join('&') : ''}`)
+}
+export const getNivelesDesempeno = ()                          => request('GET', '/catalogos/saberes/niveles-desempeno')
 
 // ── Catálogos de Secciones ─────────────────────────────────────────────────
 export const getNiveles  = ()    => request('GET', '/secciones/catalogos/niveles')

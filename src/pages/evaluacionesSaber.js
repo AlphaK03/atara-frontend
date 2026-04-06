@@ -14,6 +14,7 @@ import {
   getMatriculasBySeccion,
   getEvaluacionesSaberBySeccionPeriodo,
   getTiposSaber,
+  getMaterias,
   getEjesTematicos,
   createEvaluacionSaber,
   updateEvaluacionSaber,
@@ -33,7 +34,8 @@ const NIVEL_META = [
 
 // Catálogos de saberes — se cargan una sola vez
 let tiposSaber = []
-let ejesPorTipo = {}
+let materias   = []
+let ejesPorMateriaTipo = {}  // key: `${materiaId}_${tipoSaberId}`
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -119,12 +121,14 @@ export function renderEvaluacionesSaber(container) {
   let anioActivo   = null
   let periodoSel   = null
   let seccionSel   = null
+  let materiaSel   = null
   let estudiantes  = []
-  // {[estudianteId]: {[tipoSaberId]: {id, detalles:[{ejeTemaaticoId, valor, observacion}]}}}
+  // {[estudianteId]: {[`${materiaId}_${tipoSaberId}`]: {id, detalles, materiaId, tipoSaberId, ...}}}
   let evalsPorEstudiante = {}
 
   // Estado del wizard
   let wizEstudiante  = null
+  let wizMateria     = null   // congelada al abrir el wizard, no cambia si el usuario cambia de tab
   let wizModo        = 'nuevo'   // 'nuevo' | 'editar'
   let wizPendientes  = []
   let wizStep        = 0
@@ -132,17 +136,21 @@ export function renderEvaluacionesSaber(container) {
 
   // ── Catálogos ─────────────────────────────────────────────────────────────
   async function ensureCatalogs() {
-    if (tiposSaber.length) return
-    ;[tiposSaber] = await Promise.all([getTiposSaber()])
+    if (tiposSaber.length && materias.length) return
+    let allMaterias
+    ;[tiposSaber, allMaterias] = await Promise.all([getTiposSaber(), getMaterias()])
+    materias = allMaterias.filter(m => m.clave !== 'EDUCACION_FISICA')
     const allEjes = await getEjesTematicos()
-    ejesPorTipo = {}
+    ejesPorMateriaTipo = {}
     for (const eje of allEjes) {
-      if (!ejesPorTipo[eje.tipoSaberId]) ejesPorTipo[eje.tipoSaberId] = []
-      ejesPorTipo[eje.tipoSaberId].push(eje)
+      const key = `${eje.materiaId}_${eje.tipoSaberId}`
+      if (!ejesPorMateriaTipo[key]) ejesPorMateriaTipo[key] = []
+      ejesPorMateriaTipo[key].push(eje)
     }
-    for (const k of Object.keys(ejesPorTipo)) {
-      ejesPorTipo[k].sort((a, b) => (a.orden ?? 0) - (b.orden ?? 0))
+    for (const k of Object.keys(ejesPorMateriaTipo)) {
+      ejesPorMateriaTipo[k].sort((a, b) => (a.orden ?? 0) - (b.orden ?? 0))
     }
+    if (!materiaSel && materias.length) materiaSel = materias[0]
   }
 
   // ── Breadcrumb ────────────────────────────────────────────────────────────
@@ -350,23 +358,30 @@ export function renderEvaluacionesSaber(container) {
       nombreCompleto: m.estudianteNombreCompleto,
     }))
 
-    // Indexar evaluaciones por estudiante y tipo de saber
+    // Indexar evaluaciones por estudiante y (materiaId_tipoSaberId)
     evalsPorEstudiante = {}
     for (const ev of evalsRaw) {
       if (!evalsPorEstudiante[ev.estudianteId]) evalsPorEstudiante[ev.estudianteId] = {}
-      evalsPorEstudiante[ev.estudianteId][ev.tipoSaberId] = {
-        id:       ev.id,
-        detalles: ev.detalles || [],
-        fecha:    ev.fechaEvaluacion,
+      const key = `${ev.materiaId}_${ev.tipoSaberId}`
+      evalsPorEstudiante[ev.estudianteId][key] = {
+        id:          ev.id,
+        detalles:    ev.detalles || [],
+        fecha:       ev.fechaEvaluacion,
         observacion: ev.observacion || '',
+        materiaId:   ev.materiaId,
+        tipoSaberId: ev.tipoSaberId,
       }
     }
   }
 
   // ── PASO 3: Grilla de estudiantes ─────────────────────────────────────────
   function renderStepEstudiantes() {
-    const total     = tiposSaber.length
-    const completos = estudiantes.filter(e => Object.keys(evalsPorEstudiante[e.id] || {}).length >= total).length
+    const matId  = materiaSel?.id
+    const total  = tiposSaber.length
+    const completos  = estudiantes.filter(e => {
+      const evals = evalsPorEstudiante[e.id] || {}
+      return tiposSaber.every(t => !!evals[`${matId}_${t.id}`])
+    }).length
     const pendientes = estudiantes.length - completos
 
     stepContent.innerHTML = `
@@ -396,6 +411,20 @@ export function renderEvaluacionesSaber(container) {
           </div>
         </div>
 
+        <!-- Tabs de materia -->
+        <div id="materia-tabs" style="display:flex;gap:6px;flex-wrap:wrap;margin:14px 0 0">
+          ${materias.map(m => {
+            const sel = materiaSel?.id === m.id
+            return `<button class="mat-tab" data-mat='${JSON.stringify(m)}' style="
+              padding:6px 16px;border-radius:20px;font-size:13px;font-weight:600;
+              cursor:pointer;transition:all 0.15s;
+              border:2px solid ${sel ? 'var(--primary)' : '#e5e7eb'};
+              background:${sel ? 'var(--primary)' : '#f9fafb'};
+              color:${sel ? '#fff' : '#374151'};
+            ">${m.nombre}</button>`
+          }).join('')}
+        </div>
+
         <div id="student-grid" style="
           display:grid;
           grid-template-columns:repeat(auto-fill,minmax(230px,1fr));
@@ -404,15 +433,23 @@ export function renderEvaluacionesSaber(container) {
       </div>
     `
 
+    stepContent.querySelectorAll('.mat-tab').forEach(btn => {
+      btn.addEventListener('click', () => {
+        materiaSel = JSON.parse(btn.dataset.mat)
+        renderStepEstudiantes()
+      })
+    })
+
     renderGrid(container.querySelector('#student-grid'))
   }
 
   function renderGrid(grid) {
-    const total = tiposSaber.length
+    const total  = tiposSaber.length
+    const matId  = materiaSel?.id
 
     grid.innerHTML = estudiantes.map(est => {
       const evals = evalsPorEstudiante[est.id] || {}
-      const count = Object.keys(evals).length
+      const count = tiposSaber.filter(t => !!evals[`${matId}_${t.id}`]).length
       const isCompleto = count >= total
 
       let borderColor, badgeText, badgeBg, cardBg
@@ -428,7 +465,7 @@ export function renderEvaluacionesSaber(container) {
         .map(w => w[0]).slice(0, 2).join('').toUpperCase()
 
       const saberChips = tiposSaber.map(t => {
-        const ev   = evals[t.id]
+        const ev   = evals[`${matId}_${t.id}`]
         const done = !!ev
         // Mostrar promedio del saber si ya fue evaluado
         let promedioLabel = ''
@@ -493,7 +530,8 @@ export function renderEvaluacionesSaber(container) {
       card.addEventListener('click', () => {
         const est = estudiantes.find(e => e.id === estId)
         const evals = evalsPorEstudiante[estId] || {}
-        const count = Object.keys(evals).length
+        const matId = materiaSel?.id
+        const count = tiposSaber.filter(t => !!evals[`${matId}_${t.id}`]).length
         const isCompleto = count >= tiposSaber.length
         openWizard(est, isCompleto ? 'editar' : 'nuevo')
       })
@@ -503,6 +541,7 @@ export function renderEvaluacionesSaber(container) {
   // ── Wizard ────────────────────────────────────────────────────────────────
   function openWizard(est, modo) {
     wizEstudiante  = est
+    wizMateria     = materiaSel   // congela la materia activa al momento de abrir
     wizModo        = modo
     wizStep        = 0
     wizRespuestas  = {}
@@ -515,8 +554,8 @@ export function renderEvaluacionesSaber(container) {
     wizNombre.textContent = est.nombreCompleto
 
     if (modo === 'nuevo') {
-      const evaluadosIds = new Set(Object.keys(evals).map(Number))
-      wizPendientes = tiposSaber.filter(t => !evaluadosIds.has(t.id))
+      const matId = wizMateria?.id
+      wizPendientes = tiposSaber.filter(t => !evals[`${matId}_${t.id}`])
       for (const tipo of wizPendientes) {
         wizRespuestas[tipo.id] = { fecha: today, observacion: '', detalles: {} }
       }
@@ -526,17 +565,35 @@ export function renderEvaluacionesSaber(container) {
       refreshWizardUI()
       wizOverlay.style.display = 'flex'
     } else {
-      // Editar: mostrar pantalla de selección de saberes a recalificar
+      // Editar: todos los saberes seleccionados, ir directo al wizard
       wizModoLabel.textContent = '✏️ Recalificación'
       wizModoLabel.style.color = '#d97706'
-      showSeleccionSaberes(est, evals, today)
+      const matId = wizMateria?.id
+      wizPendientes = tiposSaber
+      for (const tipo of wizPendientes) {
+        const ev = evals[`${matId}_${tipo.id}`]
+        const detallesMap = {}
+        if (ev?.detalles) {
+          for (const d of ev.detalles) detallesMap[d.ejeTemaaticoId] = d.valor
+        }
+        wizRespuestas[tipo.id] = {
+          evalId:      ev?.id ?? null,
+          fecha:       ev?.fecha ?? today,
+          observacion: ev?.observacion ?? '',
+          detalles:    detallesMap,
+        }
+      }
+      wizStep = 0
+      refreshWizardUI()
+      wizOverlay.style.display = 'flex'
     }
   }
 
   function showSeleccionSaberes(est, evals, today) {
+    const matId = wizMateria?.id
     // Construir datos previos para mostrar promedios
     const items = tiposSaber.map(t => {
-      const ev = evals[t.id]
+      const ev = evals[`${matId}_${t.id}`]
       let promedio = null
       if (ev?.detalles?.length) {
         const sum = ev.detalles.reduce((a, d) => a + d.valor, 0)
@@ -612,7 +669,7 @@ export function renderEvaluacionesSaber(container) {
 
       // Pre-rellenar respuestas con valores actuales
       for (const tipo of wizPendientes) {
-        const ev = evals[tipo.id]
+        const ev = evals[`${matId}_${tipo.id}`]
         const detallesMap = {}
         if (ev?.detalles) {
           for (const d of ev.detalles) detallesMap[d.ejeTemaaticoId] = d.valor
@@ -644,7 +701,7 @@ export function renderEvaluacionesSaber(container) {
     if (isLast) {
       wizNext.disabled = true
       wizNext.textContent = 'Generando alertas…'
-      try { await generarAlertasTematicasEstudiante(wizEstudiante.id, periodoSel.id) } catch { /* no bloquear */ }
+      try { await generarAlertasTematicasEstudiante(wizEstudiante.id, periodoSel.id) } catch (e) { console.warn('Alerta generación falló:', e?.message) }
       wizOverlay.style.display = 'none'
       renderGrid(container.querySelector('#student-grid'))
     } else {
@@ -676,7 +733,7 @@ export function renderEvaluacionesSaber(container) {
 
     // Body
     const tipo = wizPendientes[wizStep]
-    const ejes = ejesPorTipo[tipo.id] || []
+    const ejes = ejesPorMateriaTipo[`${wizMateria?.id}_${tipo.id}`] || []
     const resp = wizRespuestas[tipo.id]
     const isEdit = wizModo === 'editar' && resp.evalId != null
 
@@ -774,6 +831,7 @@ export function renderEvaluacionesSaber(container) {
         periodoId:       periodoSel.id,
         usuarioId:       uid ? parseInt(uid) : 2,
         seccionId:       seccionSel.id,
+        materiaId:       wizMateria.id,
         tipoSaberId:     tipo.id,
         fechaEvaluacion: resp.fecha || null,
         observacion:     resp.observacion || null,
@@ -789,11 +847,14 @@ export function renderEvaluacionesSaber(container) {
 
       // Actualizar el índice local con los nuevos valores
       if (!evalsPorEstudiante[wizEstudiante.id]) evalsPorEstudiante[wizEstudiante.id] = {}
-      evalsPorEstudiante[wizEstudiante.id][tipo.id] = {
+      const cacheKey = `${wizMateria.id}_${tipo.id}`
+      evalsPorEstudiante[wizEstudiante.id][cacheKey] = {
         id:          savedEval.id,
         detalles:    savedEval.detalles || [],
         fecha:       savedEval.fechaEvaluacion,
         observacion: savedEval.observacion || '',
+        materiaId:   wizMateria.id,
+        tipoSaberId: tipo.id,
       }
 
       return true

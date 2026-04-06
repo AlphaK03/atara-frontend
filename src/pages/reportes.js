@@ -1,27 +1,27 @@
 /**
- * Reportes — Análisis Pedagógico (datos reales)
+ * Reportes - Analisis Pedagogico (datos reales)
  *
- * Escala 1–5: Inicial · En desarrollo · Intermedio · Logrado · Avanzado
+ * Escala 1-5: Inicial · En desarrollo · Intermedio · Logrado · Avanzado
  *
  * Filtros en cascada:
- *   Periodo → Centro educativo → Sección → Estudiante
- *   Cada filtro es opcional; sin selección = todos.
- *   Cambiar un filtro padre resetea los hijos.
+ *   Periodo -> Materia -> Centro educativo -> Seccion -> Estudiante
+ *   Cada filtro es opcional; "Todas" mantiene la vista general.
  */
 
 import Chart from 'chart.js/auto'
 import {
   getAnioLectivoActivo,
+  getMaterias,
   getPeriodos,
   getSecciones,
   getPromediosSeccionSaber,
   getAlertasTematicasSeccion,
 } from '../api.js'
 
-// ── Paleta ─────────────────────────────────────────────────────────────────────
-const TIPO_COLORS  = { 1: '#7c3aed', 2: '#0891b2', 3: '#d97706' }
-const NIVEL_COLOR  = { ALTA: '#dc2626', MEDIA: '#d97706', SIN_ALERTA: '#16a34a' }
+const TIPO_COLORS = { 1: '#7c3aed', 2: '#0891b2', 3: '#d97706' }
+const NIVEL_COLOR = { ALTA: '#dc2626', MEDIA: '#d97706', SIN_ALERTA: '#16a34a' }
 const SCALE_LABELS = ['', 'Inicial', 'En desarrollo', 'Intermedio', 'Logrado', 'Avanzado']
+const REPORT_MATERIAS = ['ESPANOL', 'MATEMATICAS', 'CIENCIAS', 'ESTUDIOS_SOCIALES']
 
 function colorFromVal(v) {
   if (v === null || v === undefined) return '#e5e7eb'
@@ -30,7 +30,6 @@ function colorFromVal(v) {
   return NIVEL_COLOR.SIN_ALERTA
 }
 
-// ── Chart.js helpers ───────────────────────────────────────────────────────────
 const _charts = {}
 function destroyChart(id) { _charts[id]?.destroy(); delete _charts[id] }
 function destroyAll() { Object.keys(_charts).forEach(destroyChart) }
@@ -46,7 +45,8 @@ const BASE_OPTS = {
 
 const SCALE_Y_1_5 = {
   y: {
-    min: 0, max: 5,
+    min: 0,
+    max: 5,
     ticks: { stepSize: 1, callback: v => SCALE_LABELS[v] ?? v },
     grid: { color: '#f3f4f6' },
   },
@@ -60,54 +60,57 @@ function makeChart(id, type, data, extra = {}) {
   _charts[id] = new Chart(canvas, { type, data, options: { ...BASE_OPTS, ...extra } })
 }
 
-// ── Render principal ───────────────────────────────────────────────────────────
 export async function renderReportes(container) {
   container.innerHTML = `
-    <h1>Reportes — Análisis Pedagógico</h1>
+    <h1>Reportes - Analisis Pedagogico</h1>
     <p class="page-desc">
-      Estadísticas y tendencias por sección y periodo. Escala 1–5 (Inicial → Avanzado).
-      Los filtros son opcionales — sin selección se muestra el reporte general de todos los centros.
+      Estadisticas y tendencias por seccion y periodo. Escala 1-5 (Inicial -> Avanzado).
+      "Todas" muestra el reporte general y una materia seleccionada recalcula todo el analisis solo para esa asignatura.
     </p>
 
-    <!-- Filtros en cascada -->
     <div class="card" style="margin-bottom:16px">
       <div style="display:flex;gap:14px;flex-wrap:wrap;align-items:flex-end">
         <div class="form-group" style="min-width:165px;margin-bottom:0">
           <label>Periodo</label>
-          <select id="sel-periodo" disabled><option value="">Cargando…</option></select>
+          <select id="sel-periodo" disabled><option value="">Cargando...</option></select>
+        </div>
+        <div class="form-group" style="min-width:165px;margin-bottom:0">
+          <label>Materia</label>
+          <select id="sel-materia" disabled>
+            <option value="">Todas</option>
+          </select>
         </div>
         <div class="form-group" style="min-width:185px;margin-bottom:0">
           <label>Centro educativo</label>
           <select id="sel-centro" disabled>
-            <option value="">— Todos los centros —</option>
+            <option value="">- Todos los centros -</option>
           </select>
         </div>
         <div class="form-group" style="min-width:185px;margin-bottom:0">
-          <label>Sección</label>
+          <label>Seccion</label>
           <select id="sel-seccion" disabled>
-            <option value="">— Todas las secciones —</option>
+            <option value="">- Todas las secciones -</option>
           </select>
         </div>
         <div class="form-group" style="min-width:185px;margin-bottom:0">
           <label>Estudiante</label>
           <select id="sel-estudiante" disabled>
-            <option value="">— Todos los estudiantes —</option>
+            <option value="">- Todos los estudiantes -</option>
           </select>
         </div>
       </div>
     </div>
 
-    <!-- Selector de tipo de gráfico -->
     <div class="card" style="padding:12px 18px;margin-bottom:16px">
       <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-        <span style="font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em">Tipo de gráfico:</span>
+        <span style="font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em">Tipo de grafico:</span>
         <div id="chart-type-btns" style="display:flex;gap:6px;flex-wrap:wrap">
           ${[
-            { type: 'bar',       icon: '▦', label: 'Barras'   },
-            { type: 'radar',     icon: '◈', label: 'Radar'    },
-            { type: 'doughnut',  icon: '◎', label: 'Dona'     },
-            { type: 'line',      icon: '∿', label: 'Línea'    },
-            { type: 'polarArea', icon: '◉', label: 'Polar'    },
+            { type: 'bar', icon: '▦', label: 'Barras' },
+            { type: 'radar', icon: '◈', label: 'Radar' },
+            { type: 'doughnut', icon: '◎', label: 'Dona' },
+            { type: 'line', icon: '∿', label: 'Linea' },
+            { type: 'polarArea', icon: '◉', label: 'Polar' },
           ].map(b => `
             <button class="chart-type-btn${b.type === 'bar' ? ' active' : ''}" data-type="${b.type}"
               style="display:inline-flex;align-items:center;gap:5px;padding:5px 11px;border-radius:6px;
@@ -121,7 +124,7 @@ export async function renderReportes(container) {
 
     <div id="rpt-body">
       <div style="text-align:center;padding:60px;color:var(--text-muted)">
-        ⏳ Cargando datos…
+        ⏳ Cargando datos...
       </div>
     </div>
 
@@ -133,59 +136,67 @@ export async function renderReportes(container) {
     </style>
   `
 
-  const selPeriodo    = container.querySelector('#sel-periodo')
-  const selCentro     = container.querySelector('#sel-centro')
-  const selSeccion    = container.querySelector('#sel-seccion')
+  const selPeriodo = container.querySelector('#sel-periodo')
+  const selMateria = container.querySelector('#sel-materia')
+  const selCentro = container.querySelector('#sel-centro')
+  const selSeccion = container.querySelector('#sel-seccion')
   const selEstudiante = container.querySelector('#sel-estudiante')
-  const rptBody       = container.querySelector('#rpt-body')
-  let chartType       = 'bar'
-  let periodos = [], secciones = []
+  const rptBody = container.querySelector('#rpt-body')
 
-  // Cache de datos cargados (antes del filtro de estudiante)
+  let chartType = 'bar'
+  let periodos = []
+  let secciones = []
+  let materias = []
+
   let promediosCargados = []
-  let alertasCargadas   = []
-  // Datos actualmente renderizados (después del filtro de estudiante)
-  let promediosActivos  = []
-  let alertasActivas    = []
+  let alertasCargadas = []
+  let promediosMateria = []
+  let alertasMateria = []
+  let promediosActivos = []
+  let alertasActivas = []
 
-  // ── Inicialización de catálogos ───────────────────────────────────────────
   try {
     const anio = await getAnioLectivoActivo()
-    ;[periodos, secciones] = await Promise.all([
+    ;[periodos, secciones, materias] = await Promise.all([
       getPeriodos(anio.id),
       getSecciones(anio.id),
+      getMaterias(),
     ])
 
-    // Poblar periodo
-    selPeriodo.innerHTML = '<option value="">— Todos los periodos —</option>' +
-      periodos.map(p => `<option value="${p.id}">${p.nombre}${p.activo ? ' ★' : ''}</option>`).join('')
+    selPeriodo.innerHTML = '<option value="">- Todos los periodos -</option>' +
+      periodos.map(p => `<option value="${p.id}">${p.nombre}${p.activo ? ' *' : ''}</option>`).join('')
     selPeriodo.disabled = false
 
-    // Poblar centros (únicos)
+    const materiasFiltradas = materias
+      .filter(m => REPORT_MATERIAS.includes(m.clave))
+      .sort((a, b) => REPORT_MATERIAS.indexOf(a.clave) - REPORT_MATERIAS.indexOf(b.clave))
+    selMateria.innerHTML = '<option value="">Todas</option>' +
+      materiasFiltradas.map(m => `<option value="${m.id}">${m.nombre}</option>`).join('')
+    selMateria.disabled = false
+
     const centros = [...new Set(secciones.map(s => s.centroNombre).filter(Boolean))].sort()
-    selCentro.innerHTML = '<option value="">— Todos los centros —</option>' +
+    selCentro.innerHTML = '<option value="">- Todos los centros -</option>' +
       centros.map(c => `<option value="${c}">${c}</option>`).join('')
     selCentro.disabled = false
 
-    // Poblar secciones (todas, sin filtro inicial)
     repoblarSecciones()
     selSeccion.disabled = false
 
-    // Pre-seleccionar periodo activo y cargar
     const activo = periodos.find(p => p.activo)
     if (activo) selPeriodo.value = activo.id
     await cargar()
-
   } catch (e) {
-    rptBody.innerHTML = `<div class="card" style="color:#dc2626">Error al cargar catálogos: ${e.message}</div>`
+    rptBody.innerHTML = `<div class="card" style="color:#dc2626">Error al cargar catalogos: ${e.message}</div>`
     return
   }
-
-  // ── Event listeners en cascada ────────────────────────────────────────────
 
   selPeriodo.addEventListener('change', async () => {
     resetFiltros('centro')
     await cargar()
+  })
+
+  selMateria.addEventListener('change', () => {
+    aplicarFiltroMateria()
   })
 
   selCentro.addEventListener('change', async () => {
@@ -211,9 +222,6 @@ export async function renderReportes(container) {
     if (promediosActivos.length) renderGraficos(promediosActivos, alertasActivas)
   })
 
-  // ── Helpers de filtros ─────────────────────────────────────────────────────
-
-  // Resetea filtros hijos a partir del nivel indicado
   function resetFiltros(desde) {
     const niveles = ['centro', 'seccion', 'estudiante']
     const idx = niveles.indexOf(desde)
@@ -222,51 +230,55 @@ export async function renderReportes(container) {
     if (idx <= 2) selEstudiante.value = ''
   }
 
-  // Repobla el selector de secciones según el centro seleccionado
   function repoblarSecciones() {
     const centroFiltro = selCentro.value
     const filtradas = centroFiltro
       ? secciones.filter(s => s.centroNombre === centroFiltro)
       : secciones
     const prev = selSeccion.value
-    selSeccion.innerHTML = '<option value="">— Todas las secciones —</option>' +
+    selSeccion.innerHTML = '<option value="">- Todas las secciones -</option>' +
       filtradas.map(s =>
-        `<option value="${s.id}">${s.nivelGrado ? s.nivelGrado + '° — ' : ''}${s.nombre}${s.docenteNombreCompleto ? ' (' + s.docenteNombreCompleto + ')' : ''}</option>`
+        `<option value="${s.id}">${s.nivelGrado ? s.nivelGrado + '° - ' : ''}${s.nombre}${s.docenteNombreCompleto ? ' (' + s.docenteNombreCompleto + ')' : ''}</option>`
       ).join('')
-    // Mantener selección si aún es válida
     if (prev && filtradas.some(s => String(s.id) === prev)) selSeccion.value = prev
   }
 
-  // Pobla el selector de estudiantes con los datos cargados
   function repoblarEstudiantes(promedios) {
     const prev = selEstudiante.value
     const sorted = [...promedios].sort((a, b) =>
       a.estudianteNombreCompleto.localeCompare(b.estudianteNombreCompleto))
-    selEstudiante.innerHTML = '<option value="">— Todos los estudiantes —</option>' +
+    selEstudiante.innerHTML = '<option value="">- Todos los estudiantes -</option>' +
       sorted.map(p => `<option value="${p.estudianteId}">${p.estudianteNombreCompleto}</option>`).join('')
     selEstudiante.disabled = promedios.length === 0
     if (prev && sorted.some(p => String(p.estudianteId) === prev)) selEstudiante.value = prev
   }
 
-  // Filtra por estudiante sobre los datos ya cargados y re-renderiza
+  function aplicarFiltroMateria() {
+    const materiaId = Number(selMateria.value)
+    promediosMateria = filtrarPromediosPorMateria(promediosCargados, materiaId)
+    alertasMateria = filtrarAlertasPorMateria(alertasCargadas, materiaId)
+    repoblarEstudiantes(promediosMateria)
+    aplicarFiltroEstudiante()
+  }
+
   function aplicarFiltroEstudiante() {
     const estudianteId = Number(selEstudiante.value)
     promediosActivos = estudianteId
-      ? promediosCargados.filter(p => p.estudianteId === estudianteId)
-      : promediosCargados
+      ? promediosMateria.filter(p => p.estudianteId === estudianteId)
+      : promediosMateria
     alertasActivas = estudianteId
-      ? alertasCargadas.filter(a => a.estudianteId === estudianteId)
-      : alertasCargadas
+      ? alertasMateria.filter(a => a.estudianteId === estudianteId)
+      : alertasMateria
 
     if (!promediosActivos.length) {
       destroyAll()
-      rptBody.innerHTML = vacioHtml()
+      rptBody.innerHTML = vacioHtml(mensajeSinDatosActual())
       return
     }
+
     renderGraficos(promediosActivos, alertasActivas)
   }
 
-  // ── Carga principal (hace llamadas a la API) ───────────────────────────────
   async function cargar() {
     const periodoId = Number(selPeriodo.value)
     if (!periodoId) {
@@ -277,12 +289,11 @@ export async function renderReportes(container) {
       return
     }
 
-    // Determinar qué secciones cargar
-    const centroFiltro  = selCentro.value
-    const seccionId     = Number(selSeccion.value)
-    let seccionesCarga  = secciones
+    const centroFiltro = selCentro.value
+    const seccionId = Number(selSeccion.value)
+    let seccionesCarga = secciones
     if (centroFiltro) seccionesCarga = seccionesCarga.filter(s => s.centroNombre === centroFiltro)
-    if (seccionId)    seccionesCarga = seccionesCarga.filter(s => s.id === seccionId)
+    if (seccionId) seccionesCarga = seccionesCarga.filter(s => s.id === seccionId)
 
     if (!seccionesCarga.length) {
       destroyAll()
@@ -290,11 +301,10 @@ export async function renderReportes(container) {
       return
     }
 
-    rptBody.innerHTML = `<div style="text-align:center;padding:60px;color:var(--text-muted)">⏳ Calculando reportes…</div>`
+    rptBody.innerHTML = `<div style="text-align:center;padding:60px;color:var(--text-muted)">⏳ Calculando reportes...</div>`
     destroyAll()
 
     try {
-      // Cargar promedios y alertas de todas las secciones en paralelo
       const resultados = await Promise.all(
         seccionesCarga.map(s => Promise.all([
           getPromediosSeccionSaber(s.id, periodoId).catch(() => []),
@@ -303,31 +313,33 @@ export async function renderReportes(container) {
       )
 
       promediosCargados = resultados.flatMap(([p]) => p)
-      alertasCargadas   = resultados.flatMap(([, a]) => a)
-
-      repoblarEstudiantes(promediosCargados)
-      aplicarFiltroEstudiante()
-
+      alertasCargadas = resultados.flatMap(([, a]) => a)
+      aplicarFiltroMateria()
     } catch (e) {
       rptBody.innerHTML = `<div class="card" style="color:#dc2626">Error: ${e.message}</div>`
     }
   }
 
-  // ── Graficos ───────────────────────────────────────────────────────────────
   function renderGraficos(promedios, alertas) {
-    const ejeMap  = new Map()
+    const ejeMap = new Map()
     const tipoMap = new Map()
 
     for (const est of promedios) {
       for (const ts of est.promediosPorTipoSaber || []) {
         tipoMap.set(ts.tipoSaberId, ts.tipoSaberNombre)
         for (const eje of ts.promediosPorEje || []) {
-          const k = eje.ejeTemaaticoId
-          if (!ejeMap.has(k)) ejeMap.set(k, {
-            id: k, nombre: eje.ejeNombre, clave: eje.ejeClave,
-            tipoId: ts.tipoSaberId, tipoNombre: ts.tipoSaberNombre, vals: [],
-          })
-          if (eje.promedio !== null) ejeMap.get(k).vals.push(parseFloat(eje.promedio))
+          const key = eje.ejeTemaaticoId
+          if (!ejeMap.has(key)) {
+            ejeMap.set(key, {
+              id: key,
+              nombre: eje.ejeNombre,
+              clave: eje.ejeClave,
+              tipoId: ts.tipoSaberId,
+              tipoNombre: ts.tipoSaberNombre,
+              vals: [],
+            })
+          }
+          if (eje.promedio !== null) ejeMap.get(key).vals.push(parseFloat(eje.promedio))
         }
       }
     }
@@ -339,29 +351,31 @@ export async function renderReportes(container) {
     const tipoAvgs = {}
     for (const [tipoId, nombre] of tipoMap) {
       const vals = ejes.filter(e => e.tipoId === tipoId && e.avg !== null).map(e => e.avg)
-      tipoAvgs[tipoId] = { nombre, avg: vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : null }
+      tipoAvgs[tipoId] = {
+        nombre,
+        avg: vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : null,
+      }
     }
 
-    const nAlta  = alertas.filter(a => a.nivelAlerta === 'ALTA').length
+    const nAlta = alertas.filter(a => a.nivelAlerta === 'ALTA').length
     const nMedia = alertas.filter(a => a.nivelAlerta === 'MEDIA').length
     const totalEst = promedios.length
 
-    // Etiqueta de alcance para mostrar en KPIs
-    const alcance = selEstudiante.value
+    const alcanceBase = selEstudiante.value
       ? selEstudiante.options[selEstudiante.selectedIndex]?.text
       : selSeccion.value
         ? selSeccion.options[selSeccion.selectedIndex]?.text
         : selCentro.value || 'Todos los centros'
+    const alcance = `${alcanceBase} · ${nombreMateriaActual()}`
 
     rptBody.innerHTML = `
-      <!-- KPIs -->
       <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:10px;margin-bottom:16px">
         ${[
-          { val: totalEst,                label: 'Estudiantes evaluados', col: 'var(--primary)', bg: '#eff6ff' },
-          { val: ejes.length,             label: 'Ejes evaluados',        col: '#7c3aed',        bg: '#faf5ff' },
-          { val: nAlta,                   label: 'Alertas altas',         col: '#dc2626',        bg: '#fee2e2' },
-          { val: nMedia,                  label: 'Alertas medias',        col: '#d97706',        bg: '#fef9c3' },
-          { val: promGlobal(promedios),   label: 'Promedio global',       col: '#16a34a',        bg: '#dcfce7' },
+          { val: totalEst, label: 'Estudiantes evaluados', col: 'var(--primary)', bg: '#eff6ff' },
+          { val: ejes.length, label: 'Ejes evaluados', col: '#7c3aed', bg: '#faf5ff' },
+          { val: nAlta, label: 'Alertas altas', col: '#dc2626', bg: '#fee2e2' },
+          { val: nMedia, label: 'Alertas medias', col: '#d97706', bg: '#fef9c3' },
+          { val: promGlobal(promedios), label: 'Promedio global', col: '#16a34a', bg: '#dcfce7' },
         ].map(k => `
           <div style="padding:10px 14px;border-radius:10px;background:${k.bg};border:1px solid ${k.col}25">
             <div style="font-size:22px;font-weight:900;color:${k.col};line-height:1">${typeof k.val === 'number' && !Number.isInteger(k.val) ? k.val.toFixed(2) : k.val}</div>
@@ -370,11 +384,10 @@ export async function renderReportes(container) {
       </div>
       <p style="font-size:12px;color:var(--text-muted);margin:-8px 0 14px">Alcance: <strong>${alcance}</strong></p>
 
-      <!-- Fila 1 -->
       <div class="rpt-row">
         <div class="card" style="margin:0">
-          <h2 style="margin-top:0;font-size:14px">Promedios por eje temático</h2>
-          <p style="font-size:11px;color:var(--text-muted);margin-bottom:12px">Promedio del grupo — color por nivel de alerta</p>
+          <h2 style="margin-top:0;font-size:14px">Promedios por eje tematico</h2>
+          <p style="font-size:11px;color:var(--text-muted);margin-bottom:12px">Promedio del grupo - color por nivel de alerta</p>
           <div style="position:relative;height:260px"><canvas id="chart-ejes"></canvas></div>
         </div>
         <div class="card" style="margin:0">
@@ -384,7 +397,6 @@ export async function renderReportes(container) {
         </div>
       </div>
 
-      <!-- Fila 2 -->
       <div class="rpt-row">
         <div class="card" style="margin:0">
           <h2 style="margin-top:0;font-size:14px">Promedio por estudiante</h2>
@@ -392,31 +404,28 @@ export async function renderReportes(container) {
           <div style="position:relative;height:260px"><canvas id="chart-estudiantes"></canvas></div>
         </div>
         <div class="card" style="margin:0">
-          <h2 style="margin-top:0;font-size:14px">Distribución de alertas</h2>
+          <h2 style="margin-top:0;font-size:14px">Distribucion de alertas</h2>
           <p style="font-size:11px;color:var(--text-muted);margin-bottom:12px">Cantidad de ejes por nivel</p>
           <div style="position:relative;height:260px"><canvas id="chart-alertas"></canvas></div>
         </div>
       </div>
 
-      <!-- Ranking -->
       <div class="card">
-        <h2 style="margin-top:0;font-size:14px">Estudiantes con más alertas</h2>
+        <h2 style="margin-top:0;font-size:14px">Estudiantes con mas alertas</h2>
         <p style="font-size:11px;color:var(--text-muted);margin-bottom:12px">Suma de alertas altas y medias</p>
         <div style="position:relative;height:${Math.max(160, totalEst * 32)}px"><canvas id="chart-ranking"></canvas></div>
       </div>
 
-      <!-- Insights -->
       <div class="card">
-        <h2 style="margin-top:0;font-size:14px">Análisis automático</h2>
+        <h2 style="margin-top:0;font-size:14px">Analisis automatico</h2>
         <p style="font-size:11px;color:var(--text-muted);margin-bottom:14px">Conclusiones derivadas de los patrones detectados.</p>
         <div id="insights-list"></div>
       </div>
     `
 
-    // ── Chart 1: Ejes ──────────────────────────────────────────────────────
     const ejeLabels = ejes.map(e => abrev(e.nombre))
-    const ejeData   = ejes.map(e => e.avg ?? 0)
-    const ejeBgCol  = ejes.map(e => colorFromVal(e.avg))
+    const ejeData = ejes.map(e => e.avg ?? 0)
+    const ejeBgCol = ejes.map(e => colorFromVal(e.avg))
 
     if (chartType === 'radar') {
       makeChart('chart-ejes', 'radar', {
@@ -427,25 +436,28 @@ export async function renderReportes(container) {
       makeChart('chart-ejes', chartType, {
         labels: ejeLabels,
         datasets: [{ data: ejeData, backgroundColor: ejeBgCol.map(c => c + 'cc'), borderWidth: 1 }],
-      }, chartType === 'polarArea' ? { scales: { r: { min: 0, max: 5 } } }
+      }, chartType === 'polarArea'
+        ? { scales: { r: { min: 0, max: 5 } } }
         : { plugins: { ...BASE_OPTS.plugins, legend: { position: 'right', labels: { font: { size: 10 } } } } })
     } else {
       makeChart('chart-ejes', chartType === 'line' ? 'line' : 'bar', {
         labels: ejeLabels,
         datasets: [{
-          label: 'Promedio', data: ejeData,
+          label: 'Promedio',
+          data: ejeData,
           backgroundColor: chartType === 'line' ? 'rgba(59,130,246,0.1)' : ejeBgCol,
           borderColor: chartType === 'line' ? '#3b82f6' : ejeBgCol,
-          borderRadius: 4, fill: chartType === 'line', tension: 0.3,
+          borderRadius: 4,
+          fill: chartType === 'line',
+          tension: 0.3,
           pointBackgroundColor: ejeBgCol,
         }],
       }, { scales: SCALE_Y_1_5 })
     }
 
-    // ── Chart 2: Tipos de saber ────────────────────────────────────────────
     const tipoLabels = Object.values(tipoAvgs).map(t => t.nombre.replace('Saber ', ''))
-    const tipoData   = Object.values(tipoAvgs).map(t => t.avg ?? 0)
-    const tipoCols   = Object.keys(tipoAvgs).map(id => TIPO_COLORS[id] || '#6b7280')
+    const tipoData = Object.values(tipoAvgs).map(t => t.avg ?? 0)
+    const tipoCols = Object.keys(tipoAvgs).map(id => TIPO_COLORS[id] || '#6b7280')
 
     if (chartType === 'radar') {
       makeChart('chart-tipo', 'radar', {
@@ -456,20 +468,24 @@ export async function renderReportes(container) {
       makeChart('chart-tipo', chartType, {
         labels: tipoLabels,
         datasets: [{ data: tipoData, backgroundColor: tipoCols.map(c => c + 'cc'), borderWidth: 1 }],
-      }, chartType === 'polarArea' ? { scales: { r: { min: 0, max: 5 } } }
+      }, chartType === 'polarArea'
+        ? { scales: { r: { min: 0, max: 5 } } }
         : { plugins: { ...BASE_OPTS.plugins, legend: { position: 'right' } } })
     } else {
       makeChart('chart-tipo', chartType === 'line' ? 'line' : 'bar', {
         labels: tipoLabels,
         datasets: [{
-          label: 'Promedio', data: tipoData,
-          backgroundColor: tipoCols, borderColor: tipoCols,
-          borderRadius: 4, fill: chartType === 'line', tension: 0.4,
+          label: 'Promedio',
+          data: tipoData,
+          backgroundColor: tipoCols,
+          borderColor: tipoCols,
+          borderRadius: 4,
+          fill: chartType === 'line',
+          tension: 0.4,
         }],
       }, { scales: SCALE_Y_1_5 })
     }
 
-    // ── Chart 3: Estudiantes ───────────────────────────────────────────────
     const estSorted = [...promedios].sort((a, b) => parseFloat(a.promedioGlobal ?? 0) - parseFloat(b.promedioGlobal ?? 0))
     makeChart('chart-estudiantes', 'bar', {
       labels: estSorted.map(e => nombreCorto(e.estudianteNombreCompleto)),
@@ -481,10 +497,9 @@ export async function renderReportes(container) {
       }],
     }, { indexAxis: 'y', scales: { x: { min: 0, max: 5, ticks: { callback: v => SCALE_LABELS[v] ?? v }, grid: { color: '#f3f4f6' } }, y: { grid: { display: false } } } })
 
-    // ── Chart 4: Distribución de alertas ──────────────────────────────────
-    const distData   = [nAlta, nMedia, Math.max(0, ejes.length * totalEst - nAlta - nMedia)]
-    const distLabels = ['🔴 Alta', '🟡 Media', '✅ Sin alerta']
-    const distCols   = [NIVEL_COLOR.ALTA, NIVEL_COLOR.MEDIA, NIVEL_COLOR.SIN_ALERTA]
+    const distData = [nAlta, nMedia, Math.max(0, ejes.length * totalEst - nAlta - nMedia)]
+    const distLabels = ['Alta', 'Media', 'Sin alerta']
+    const distCols = [NIVEL_COLOR.ALTA, NIVEL_COLOR.MEDIA, NIVEL_COLOR.SIN_ALERTA]
 
     if (chartType === 'radar') {
       makeChart('chart-alertas', 'radar', {
@@ -503,7 +518,6 @@ export async function renderReportes(container) {
       }, chartType === 'polarArea' ? {} : { plugins: { ...BASE_OPTS.plugins, legend: { position: 'right' } } })
     }
 
-    // ── Chart 5: Ranking ───────────────────────────────────────────────────
     const rankSorted = [...promedios]
       .map(e => ({ nombre: nombreCorto(e.estudianteNombreCompleto), altas: e.totalAlertasAltas || 0, medias: e.totalAlertasMedias || 0 }))
       .filter(e => e.altas + e.medias > 0)
@@ -516,13 +530,12 @@ export async function renderReportes(container) {
       makeChart('chart-ranking', 'bar', {
         labels: rankSorted.map(e => e.nombre),
         datasets: [
-          { label: 'Alertas altas',  data: rankSorted.map(e => e.altas),  backgroundColor: NIVEL_COLOR.ALTA  + 'cc', borderRadius: 3 },
+          { label: 'Alertas altas', data: rankSorted.map(e => e.altas), backgroundColor: NIVEL_COLOR.ALTA + 'cc', borderRadius: 3 },
           { label: 'Alertas medias', data: rankSorted.map(e => e.medias), backgroundColor: NIVEL_COLOR.MEDIA + 'cc', borderRadius: 3 },
         ],
       }, { indexAxis: 'y', scales: { x: { beginAtZero: true, ticks: { stepSize: 1 }, stacked: true, grid: { color: '#f3f4f6' } }, y: { stacked: true, grid: { display: false } } }, plugins: { ...BASE_OPTS.plugins, legend: { position: 'top' } } })
     }
 
-    // ── Insights ───────────────────────────────────────────────────────────
     const insights = generarInsights(ejes, tipoAvgs, promedios)
     const insDiv = container.querySelector('#insights-list')
     insDiv.innerHTML = !insights.length
@@ -537,7 +550,6 @@ export async function renderReportes(container) {
           </div>`).join('')
   }
 
-  // ── Helpers ────────────────────────────────────────────────────────────────
   function vacioHtml(msg = 'No hay evaluaciones registradas para los filtros seleccionados.') {
     return `
       <div class="card" style="text-align:center;padding:48px 20px;color:var(--text-muted)">
@@ -552,6 +564,50 @@ export async function renderReportes(container) {
     return vals.length ? (vals.reduce((a, b) => a + b, 0) / vals.length).toFixed(2) : '—'
   }
 
+  function promedioLista(valores) {
+    return valores.length ? valores.reduce((a, b) => a + b, 0) / valores.length : null
+  }
+
+  function filtrarPromediosPorMateria(promedios, materiaId) {
+    if (!materiaId) return promedios
+
+    return promedios
+      .map(est => {
+        const tipos = (est.promediosPorTipoSaber || []).filter(ts => ts.materiaId === materiaId)
+        if (!tipos.length) return null
+
+        const ejes = tipos.flatMap(ts => ts.promediosPorEje || [])
+        const promediosEje = ejes
+          .map(eje => parseFloat(eje.promedio))
+          .filter(valor => !isNaN(valor))
+
+        return {
+          ...est,
+          promedioGlobal: promedioLista(promediosEje),
+          promediosPorTipoSaber: tipos,
+          totalAlertasAltas: ejes.filter(eje => eje.nivelAlerta === 'ALTA').length,
+          totalAlertasMedias: ejes.filter(eje => eje.nivelAlerta === 'MEDIA').length,
+        }
+      })
+      .filter(Boolean)
+  }
+
+  function filtrarAlertasPorMateria(alertas, materiaId) {
+    return materiaId ? alertas.filter(alerta => alerta.materiaId === materiaId) : alertas
+  }
+
+  function nombreMateriaActual() {
+    return selMateria.value
+      ? `Materia: ${selMateria.options[selMateria.selectedIndex]?.text || 'Seleccionada'}`
+      : 'Materia: Todas'
+  }
+
+  function mensajeSinDatosActual() {
+    return selMateria.value
+      ? `No hay evaluaciones registradas para ${selMateria.options[selMateria.selectedIndex]?.text || 'la materia seleccionada'} con los filtros actuales.`
+      : 'No hay evaluaciones registradas para los filtros seleccionados.'
+  }
+
   function abrev(nombre) {
     return nombre.length > 22 ? nombre.slice(0, 20) + '…' : nombre
   }
@@ -564,33 +620,50 @@ export async function renderReportes(container) {
   function generarInsights(ejes, tipoAvgs, promedios) {
     const ins = []
     const conData = ejes.filter(e => e.avg !== null)
+
     if (conData.length) {
-      const peor = conData.reduce((a, b) => a.avg < b.avg ? a : b)
+      const peor = conData.reduce((a, b) => (a.avg < b.avg ? a : b))
       if (peor.avg <= 3.0) {
-        ins.push({ icon: '📉', title: 'Eje con mayor debilidad colectiva',
-          text: `El eje <strong>${peor.nombre}</strong> (${peor.tipoNombre.replace('Saber ', '')}) tiene el promedio más bajo: <strong>${peor.avg.toFixed(2)}</strong>/5.` })
+        ins.push({
+          icon: '📉',
+          title: 'Eje con mayor debilidad colectiva',
+          text: `El eje <strong>${peor.nombre}</strong> (${peor.tipoNombre.replace('Saber ', '')}) tiene el promedio mas bajo: <strong>${peor.avg.toFixed(2)}</strong>/5.`,
+        })
       }
     }
+
     const tipoVals = Object.values(tipoAvgs).filter(t => t.avg !== null)
     if (tipoVals.length >= 2) {
-      const min = tipoVals.reduce((a, b) => a.avg < b.avg ? a : b)
-      const max = tipoVals.reduce((a, b) => a.avg > b.avg ? a : b)
+      const min = tipoVals.reduce((a, b) => (a.avg < b.avg ? a : b))
+      const max = tipoVals.reduce((a, b) => (a.avg > b.avg ? a : b))
       const dif = max.avg - min.avg
       if (dif >= 0.8) {
-        ins.push({ icon: '⚖️', title: 'Desequilibrio entre tipos de saber',
-          text: `Brecha de <strong>${dif.toFixed(2)} pts</strong> entre <strong>${max.nombre.replace('Saber ', '')}</strong> (${max.avg.toFixed(2)}) y <strong>${min.nombre.replace('Saber ', '')}</strong> (${min.avg.toFixed(2)}).` })
+        ins.push({
+          icon: '⚖️',
+          title: 'Desequilibrio entre tipos de saber',
+          text: `Brecha de <strong>${dif.toFixed(2)} pts</strong> entre <strong>${max.nombre.replace('Saber ', '')}</strong> (${max.avg.toFixed(2)}) y <strong>${min.nombre.replace('Saber ', '')}</strong> (${min.avg.toFixed(2)}).`,
+        })
       }
     }
+
     const masRiesgo = [...promedios].sort((a, b) => (b.totalAlertasAltas || 0) - (a.totalAlertasAltas || 0))[0]
     if (masRiesgo && (masRiesgo.totalAlertasAltas || 0) > 0) {
-      ins.push({ icon: '🚨', title: 'Estudiante con mayor riesgo',
-        text: `<strong>${masRiesgo.estudianteNombreCompleto}</strong> — ${masRiesgo.totalAlertasAltas} alerta${masRiesgo.totalAlertasAltas !== 1 ? 's' : ''} alta${masRiesgo.totalAlertasAltas !== 1 ? 's' : ''} · promedio ${parseFloat(masRiesgo.promedioGlobal).toFixed(2)}/5.` })
+      ins.push({
+        icon: '🚨',
+        title: 'Estudiante con mayor riesgo',
+        text: `<strong>${masRiesgo.estudianteNombreCompleto}</strong> - ${masRiesgo.totalAlertasAltas} alerta${masRiesgo.totalAlertasAltas !== 1 ? 's' : ''} alta${masRiesgo.totalAlertasAltas !== 1 ? 's' : ''} · promedio ${parseFloat(masRiesgo.promedioGlobal).toFixed(2)}/5.`,
+      })
     }
+
     const gp = parseFloat(promGlobal(promedios))
     if (!isNaN(gp) && gp > 3.5) {
-      ins.push({ icon: '🌟', title: 'Desempeño general satisfactorio',
-        text: `Promedio global <strong>${gp.toFixed(2)}/5</strong> — por encima del nivel Intermedio.` })
+      ins.push({
+        icon: '🌟',
+        title: 'Desempeño general satisfactorio',
+        text: `Promedio global <strong>${gp.toFixed(2)}/5</strong> - por encima del nivel Intermedio.`,
+      })
     }
+
     return ins
   }
 }
