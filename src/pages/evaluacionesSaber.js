@@ -11,6 +11,7 @@ import {
   getAnioLectivoActivo,
   getPeriodos,
   getSecciones,
+  filtrarSeccionesPropias,
   getMatriculasBySeccion,
   getEvaluacionesSaberBySeccionPeriodo,
   getTiposSaber,
@@ -276,7 +277,7 @@ export function renderEvaluacionesSaber(container) {
     stepContent.innerHTML = '<p class="loading">Cargando secciones…</p>'
 
     try {
-      const secciones = await getSecciones(anioActivo.id)
+      const secciones = await filtrarSeccionesPropias(await getSecciones(anioActivo.id))
 
       stepContent.innerHTML = `
         <div class="card">

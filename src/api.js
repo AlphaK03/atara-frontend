@@ -77,6 +77,7 @@ async function request(method, path, body, isRetry = false) {
 
 // ── Auth ──────────────────────────────────────────────────────────────────
 export async function login(correo, password) {
+  _meCache = null
   const data = await request('POST', '/auth/login', { correo, password })
   setAccessToken(data.accessToken)
   if (data.refreshToken) setRefreshToken(data.refreshToken)
@@ -84,6 +85,7 @@ export async function login(correo, password) {
   return data
 }
 export async function logout() {
+  _meCache = null
   const rt = getRefreshToken()
   if (rt) {
     // Revocar el refresh token en el backend (best-effort, no bloquear si falla)
@@ -95,6 +97,26 @@ export async function logout() {
 }
 
 export const getMe = () => request('GET', '/auth/me')
+
+// ── Contexto del usuario autenticado (cacheado por sesión) ────────────────
+// Devuelve { userId, correo, nombre, apellidos, rol, seccionIds, materiaIds }
+// rol === 'DOCENTE' → seccionIds/materiaIds contienen sus asignaciones
+// rol === 'ADMIN' | 'COORDINADOR' → seccionIds/materiaIds están vacíos (acceso total)
+let _meCache = null
+export async function getContextoUsuario() {
+  if (!_meCache) _meCache = await getMe()
+  return _meCache
+}
+
+/**
+ * Filtra una lista de secciones al alcance del usuario autenticado.
+ * ADMIN/COORDINADOR ven todas; DOCENTE solo las asignadas.
+ */
+export async function filtrarSeccionesPropias(secciones) {
+  const ctx = await getContextoUsuario()
+  if (!ctx || ctx.rol !== 'DOCENTE' || !ctx.seccionIds?.length) return secciones
+  return secciones.filter(s => ctx.seccionIds.includes(s.id))
+}
 
 // ── Periodos ───────────────────────────────────────────────────────────────
 export const getPeriodos       = (anioLectivoId) => request('GET', `/periodos?anioLectivoId=${anioLectivoId}`)

@@ -10,6 +10,7 @@ import {
   getAnioLectivoActivo,
   getPeriodos,
   getSecciones,
+  filtrarSeccionesPropias,
   getMaterias,
   getAlertasTematicasSeccion,
   generarAlertasTematicasSeccion,
@@ -311,11 +312,13 @@ export async function renderAlertasTempranas(container) {
   try {
     const anio = await getAnioLectivoActivo()
     let allMaterias
-    ;[periodos, secciones, allMaterias] = await Promise.all([
+    let rawSecciones
+    ;[periodos, rawSecciones, allMaterias] = await Promise.all([
       getPeriodos(anio.id),
       getSecciones(anio.id),
       getMaterias().catch(() => []),
     ])
+    secciones = await filtrarSeccionesPropias(rawSecciones)
     materiasList = allMaterias.filter(m => m.clave !== 'EDUCACION_FISICA')
     selPeriodo.innerHTML = '<option value="">— Seleccione un periodo —</option>' +
       periodos.map(p => `<option value="${p.id}">${p.nombre}${p.activo ? ' ★' : ''}</option>`).join('')

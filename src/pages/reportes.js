@@ -14,6 +14,7 @@ import {
   getMaterias,
   getPeriodos,
   getSecciones,
+  filtrarSeccionesPropias,
   getPromediosSeccionSaber,
   getAlertasTematicasSeccion,
 } from '../api.js'
@@ -157,11 +158,13 @@ export async function renderReportes(container) {
 
   try {
     const anio = await getAnioLectivoActivo()
-    ;[periodos, secciones, materias] = await Promise.all([
+    let seccionesRaw
+    ;[periodos, seccionesRaw, materias] = await Promise.all([
       getPeriodos(anio.id),
       getSecciones(anio.id),
       getMaterias(),
     ])
+    secciones = await filtrarSeccionesPropias(seccionesRaw)
 
     selPeriodo.innerHTML = '<option value="">- Todos los periodos -</option>' +
       periodos.map(p => `<option value="${p.id}">${p.nombre}${p.activo ? ' *' : ''}</option>`).join('')

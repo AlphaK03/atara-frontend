@@ -15,6 +15,7 @@ import {
   getAnioLectivoActivo,
   getPeriodos,
   getSecciones,
+  filtrarSeccionesPropias,
   getMatriculasBySeccion,
   getPromediosSeccionSaber,
 } from '../api.js'
@@ -87,10 +88,12 @@ export async function renderVisualizaciones(container, params = {}) {
   // ── Cargar catálogos ──────────────────────────────────────────────────────
   try {
     anioActivo = await getAnioLectivoActivo()
-    ;[periodos, secciones] = await Promise.all([
+    const [periodosCargados, seccionesRaw] = await Promise.all([
       getPeriodos(anioActivo.id),
       getSecciones(anioActivo.id),
     ])
+    periodos  = periodosCargados
+    secciones = await filtrarSeccionesPropias(seccionesRaw)
 
     selPeriodo.innerHTML = '<option value="">— Seleccione un periodo —</option>' +
       periodos.map(p => `<option value="${p.id}">${p.nombre}${p.activo ? ' ★' : ''}</option>`).join('')
