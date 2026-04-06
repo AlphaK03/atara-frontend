@@ -1,5 +1,5 @@
 import './style.css'
-import { checkHealth, getAccessToken, login, logout } from './api.js'
+import { checkHealth, getAccessToken, getMe, login, logout } from './api.js'
 import { renderAniosLectivos }    from './pages/aniosLectivos.js'
 import { renderEstudiantes }      from './pages/estudiantes.js'
 import { renderMatriculas }       from './pages/matriculas.js'
@@ -11,6 +11,7 @@ import { renderVisualizaciones }  from './pages/visualizaciones.js'
 import { renderReportes }         from './pages/reportes.js'
 import { renderImportarPiad }     from './pages/importarPiad.js'
 import { renderSecciones }        from './pages/secciones.js'
+import { renderSesion }           from './pages/sesion.js'
 
 const pages = {
   aniosLectivos:    renderAniosLectivos,
@@ -24,6 +25,7 @@ const pages = {
   evaluacionesSaber: renderEvaluacionesSaber,
   visualizaciones:  renderVisualizaciones,
   reportes:         renderReportes,
+  sesion:           renderSesion,
 }
 
 const content = document.getElementById('page-content')
@@ -73,6 +75,7 @@ function showLogin(notice = '') {
     try {
       await login(correo, pass)
       navigate('aniosLectivos')
+      window.dispatchEvent(new CustomEvent('atara:logged-in'))
     } catch (e) {
       errorDiv.textContent = e.message
       btn.disabled = false
@@ -142,9 +145,23 @@ async function pingBackend() {
 pingBackend()
 setInterval(pingBackend, 15000)
 
+// Muestra el nombre del usuario autenticado en el sidebar
+async function refreshUserChip() {
+  const chip = document.getElementById('user-chip')
+  if (!chip) return
+  if (!getAccessToken()) { chip.textContent = ''; return }
+  try {
+    const me = await getMe()
+    if (me) chip.textContent = `${me.nombre} (${me.rol})`
+  } catch { chip.textContent = '' }
+}
+
 // Start: show login if no token, otherwise go to main page
 if (getAccessToken()) {
   navigate('aniosLectivos')
+  refreshUserChip()
 } else {
   showLogin()
 }
+
+window.addEventListener('atara:logged-in', () => refreshUserChip())

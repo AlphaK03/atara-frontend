@@ -83,11 +83,18 @@ export async function login(correo, password) {
   if (data.userId) setUserId(data.userId)
   return data
 }
-export function logout() {
+export async function logout() {
+  const rt = getRefreshToken()
+  if (rt) {
+    // Revocar el refresh token en el backend (best-effort, no bloquear si falla)
+    try { await request('POST', '/auth/logout', { refreshToken: rt }) } catch { /* ignorar */ }
+  }
   clearAccessToken()
   clearRefreshToken()
   clearUserId()
 }
+
+export const getMe = () => request('GET', '/auth/me')
 
 // ── Periodos ───────────────────────────────────────────────────────────────
 export const getPeriodos       = (anioLectivoId) => request('GET', `/periodos?anioLectivoId=${anioLectivoId}`)

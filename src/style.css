@@ -22,11 +22,12 @@
 body { font-family: system-ui, -apple-system, sans-serif; background: var(--bg); color: var(--text); font-size: 14px; }
 
 /* Layout */
-#app { display: flex; min-height: 100vh; }
+#app { display: flex; height: 100vh; overflow: hidden; }
 
 .sidebar {
-  width: 220px; min-height: 100vh; background: var(--sidebar-bg);
-  display: flex; flex-direction: column; flex-shrink: 0; position: sticky; top: 0;
+  width: 220px; height: 100vh; background: var(--sidebar-bg);
+  display: flex; flex-direction: column; flex-shrink: 0;
+  overflow-y: auto;
 }
 .sidebar-header { padding: 24px 20px 16px; border-bottom: 1px solid rgba(255,255,255,0.07); }
 .logo { display: block; font-size: 20px; font-weight: 700; color: #fff; letter-spacing: 1px; }
@@ -49,7 +50,7 @@ body { font-family: system-ui, -apple-system, sans-serif; background: var(--bg);
 .dot.up { background: var(--success); }
 .dot.down { background: var(--danger); }
 
-.content { flex: 1; padding: 32px; max-width: 960px; }
+.content { flex: 1; padding: 32px; max-width: 960px; overflow-y: auto; }
 
 /* Typography */
 h1 { font-size: 22px; font-weight: 700; margin-bottom: 6px; }
@@ -157,6 +158,18 @@ hr { border: none; border-top: 1px solid var(--border); margin: 24px 0; }
   z-index: 199;
 }
 #sidebar-backdrop.visible { display: block; }
+
+/* ── Sidebar user chip ───────────────────────────────────────────────────── */
+.nav-user-chip {
+  display: block;
+  padding: 4px 20px 6px;
+  font-size: 12px;
+  color: var(--sidebar-active);
+  opacity: 0.85;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 
 /* ── Sidebar section labels ───────────────────────────────────────────────── */
 .nav-section-label {
