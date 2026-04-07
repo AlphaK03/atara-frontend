@@ -220,6 +220,13 @@ export const getAlertasTematicasEstudiante = (estudianteId, periodoId) =>
 export const getAlertasTematicasSeccion = (seccionId, periodoId) =>
   request('GET', `/alertas-tematicas/seccion/${seccionId}/periodo/${periodoId}`)
 
+// ── Admin ──────────────────────────────────────────────────────────────────
+/** GET /api/admin/usuarios — solo ADMIN */
+export const getUsuarios    = ()           => request('GET',    '/admin/usuarios')
+export const createUsuario  = (data)       => request('POST',   '/admin/usuarios', data)
+export const updateUsuario  = (id, data)   => request('PUT',    `/admin/usuarios/${id}`, data)
+export const deleteUsuario  = (id)         => request('DELETE', `/admin/usuarios/${id}`)
+
 // ── Admin CRUD (backend endpoints not yet implemented) ────────────────────
 // Each stub will throw until the corresponding backend endpoint is created.
 // TODO: Backend needs DELETE /api/estudiantes/{id}

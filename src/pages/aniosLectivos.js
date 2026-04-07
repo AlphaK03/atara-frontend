@@ -23,25 +23,17 @@ export async function renderAniosLectivos(container) {
           <span style="font-size:16px;flex-shrink:0">ℹ️</span>
           <span>
             Al crear el año lectivo el sistema genera automáticamente los
-            <strong>3 trimestres</strong>, dividiendo el periodo en partes iguales.
+            <strong>3 trimestres</strong>.
             El I Trimestre queda activo por defecto.
             Puedes editar, eliminar o agregar periodos después de crearlo.
           </span>
         </div>
         <div id="form-msg"></div>
         <form id="anio-form">
-          <div class="form-grid cols-3">
+          <div class="form-grid" style="max-width:260px">
             <div class="form-group">
               <label>Año</label>
               <input type="number" name="anio" placeholder="2026" min="2000" max="2100" required />
-            </div>
-            <div class="form-group">
-              <label>Fecha inicio</label>
-              <input type="date" name="fechaInicio" required />
-            </div>
-            <div class="form-group">
-              <label>Fecha fin</label>
-              <input type="date" name="fechaFin" required />
             </div>
           </div>
           <div class="btn-row">
@@ -151,7 +143,6 @@ export async function renderAniosLectivos(container) {
           <div class="trimestre-item${p.activo ? ' activo' : ''}">
             <div class="t-info">
               <strong>${p.nombre}</strong>
-              <span style="color:#6b7280">${fmt(p.fechaInicio)} — ${fmt(p.fechaFin)}</span>
               ${p.activo
                 ? '<span style="font-size:11px;color:#16a34a;font-weight:600">● Activo</span>'
                 : `<button class="btn btn-sm activar-periodo-btn"
@@ -164,7 +155,6 @@ export async function renderAniosLectivos(container) {
             <div class="t-actions">
               <button class="btn-icon btn-edit edit-periodo-btn"
                 data-id="${p.id}" data-nombre="${p.nombre}"
-                data-inicio="${p.fechaInicio}" data-fin="${p.fechaFin}"
                 data-anio-id="${a.id}">
                 Editar
               </button>
@@ -182,14 +172,12 @@ export async function renderAniosLectivos(container) {
               <div class="left">
                 <strong style="font-size:16px">${a.anio}</strong>
                 ${activoBadge}
-                <span style="font-size:13px;color:#6b7280">${fmt(a.fechaInicio)} — ${fmt(a.fechaFin)}</span>
                 <span style="font-size:12px;color:#9ca3af">${periodos.length} periodo${periodos.length !== 1 ? 's' : ''}</span>
               </div>
               <div class="right">
                 ${activarAnioBtn}
                 <button class="btn-icon btn-edit edit-anio-btn"
-                  data-id="${a.id}" data-anio="${a.anio}"
-                  data-inicio="${a.fechaInicio}" data-fin="${a.fechaFin}">
+                  data-id="${a.id}" data-anio="${a.anio}">
                   Editar
                 </button>
                 <button class="btn-icon btn-del del-anio-btn"
@@ -204,7 +192,7 @@ export async function renderAniosLectivos(container) {
               ${periodos.length
                 ? `<p style="font-size:12px;color:#6b7280;margin:12px 0 4px">
                     Haz clic en <strong>Activar</strong> para cambiar el periodo en curso.
-                    Puedes editar fechas y nombre, o eliminar un periodo que no necesites.
+                    Puedes editar el nombre o eliminar un periodo que no necesites.
                    </p>
                    <div class="trimestre-list">${trimestreItems}</div>`
                 : `<p style="font-size:13px;color:#9ca3af;margin:12px 0 6px">Sin periodos generados.</p>`
@@ -271,38 +259,22 @@ export async function renderAniosLectivos(container) {
     // ── Editar año lectivo ─────────────────────────────────────────────────
     listDiv.querySelectorAll('.edit-anio-btn').forEach(btn => {
       btn.addEventListener('click', () => {
-        const { id, anio, inicio, fin } = btn.dataset
+        const { id, anio } = btn.dataset
         const modal = openModal({
           title: `Editar año lectivo ${anio}`,
           body: `
-            <div class="form-grid cols-3">
-              <div class="form-group">
-                <label>Año *</label>
-                <input id="m-anio" type="number" value="${anio}" min="2000" max="2100" required />
-              </div>
-              <div class="form-group">
-                <label>Fecha inicio *</label>
-                <input id="m-inicio" type="date" value="${inicio}" required />
-              </div>
-              <div class="form-group">
-                <label>Fecha fin *</label>
-                <input id="m-fin" type="date" value="${fin}" required />
-              </div>
+            <div class="form-group">
+              <label>Año *</label>
+              <input id="m-anio" type="number" value="${anio}" min="2000" max="2100" required />
             </div>
-            <p style="font-size:12px;color:#d97706;margin-top:10px">
-              ⚠️ Cambiar las fechas no ajusta automáticamente las fechas de los periodos existentes.
-            </p>
           `,
         })
         modal.saveBtn.addEventListener('click', async () => {
           modal.saveBtn.disabled = true
           modal.msgEl.innerHTML  = ''
           try {
-            // NOTE: Backend PUT /api/anios-lectivos/{id} not yet implemented.
             await updateAnioLectivo(id, {
-              anio:        Number(modal.bodyEl.querySelector('#m-anio').value),
-              fechaInicio: modal.bodyEl.querySelector('#m-inicio').value,
-              fechaFin:    modal.bodyEl.querySelector('#m-fin').value,
+              anio: Number(modal.bodyEl.querySelector('#m-anio').value),
             })
             if (!getAccessToken()) { modal.close(); return }
             modal.close()
@@ -337,7 +309,6 @@ export async function renderAniosLectivos(container) {
         if (!ok) return
         btn.disabled = true
         try {
-          // NOTE: Backend DELETE /api/anios-lectivos/{id} not yet implemented.
           await deleteAnioLectivo(id)
           if (!getAccessToken()) return
           listMsg.innerHTML = `<div class="alert alert-success">Año lectivo ${anio} eliminado.</div>`
@@ -354,36 +325,28 @@ export async function renderAniosLectivos(container) {
     // ── Editar periodo ─────────────────────────────────────────────────────
     listDiv.querySelectorAll('.edit-periodo-btn').forEach(btn => {
       btn.addEventListener('click', () => {
-        const { id, nombre, inicio, fin, anioId } = btn.dataset
+        const { id, nombre, anioId } = btn.dataset
         const modal = openModal({
           title: `Editar periodo: ${nombre}`,
           body: `
-            <div class="form-grid">
-              <div class="form-group full">
-                <label>Nombre del periodo *</label>
-                <input id="m-nombre" value="${nombre}"
-                  placeholder="Ej: I Trimestre, I Semestre, Período Único…" required />
-              </div>
-              <div class="form-group">
-                <label>Fecha inicio *</label>
-                <input id="m-inicio" type="date" value="${inicio}" required />
-              </div>
-              <div class="form-group">
-                <label>Fecha fin *</label>
-                <input id="m-fin" type="date" value="${fin}" required />
-              </div>
+            <div class="form-group">
+              <label>Nombre del periodo *</label>
+              <input id="m-nombre" value="${nombre}"
+                placeholder="Ej: I Trimestre, I Semestre, Período Único…" required />
             </div>
           `,
         })
         modal.saveBtn.addEventListener('click', async () => {
+          const nuevoNombre = modal.bodyEl.querySelector('#m-nombre').value.trim()
+          if (!nuevoNombre) {
+            modal.msgEl.innerHTML = '<div class="alert alert-error">El nombre es obligatorio.</div>'
+            return
+          }
           modal.saveBtn.disabled = true
           modal.msgEl.innerHTML  = ''
           try {
-            // NOTE: Backend PUT /api/periodos/{id} not yet implemented.
             await updatePeriodo(id, {
-              nombre:      modal.bodyEl.querySelector('#m-nombre').value,
-              fechaInicio: modal.bodyEl.querySelector('#m-inicio').value,
-              fechaFin:    modal.bodyEl.querySelector('#m-fin').value,
+              nombre: nuevoNombre,
               anioLectivoId: Number(anioId),
             })
             if (!getAccessToken()) { modal.close(); return }
@@ -420,7 +383,6 @@ export async function renderAniosLectivos(container) {
         if (!ok) return
         btn.disabled = true
         try {
-          // NOTE: Backend DELETE /api/periodos/{id} not yet implemented.
           await deletePeriodo(id)
           if (!getAccessToken()) return
           listMsg.innerHTML = `<div class="alert alert-success">Periodo "${nombre}" eliminado.</div>`
@@ -444,41 +406,28 @@ export async function renderAniosLectivos(container) {
               Puedes añadir periodos personalizados (trimestres, semestres, etc.)
               para ajustar la estructura del año lectivo.
             </p>
-            <div class="form-grid">
-              <div class="form-group full">
-                <label>Nombre del periodo *</label>
-                <input id="m-nombre"
-                  placeholder="Ej: II Semestre, Período Único…" required />
-              </div>
-              <div class="form-group">
-                <label>Fecha inicio *</label>
-                <input id="m-inicio" type="date" required />
-              </div>
-              <div class="form-group">
-                <label>Fecha fin *</label>
-                <input id="m-fin" type="date" required />
-              </div>
+            <div class="form-group">
+              <label>Nombre del periodo *</label>
+              <input id="m-nombre"
+                placeholder="Ej: II Semestre, Período Único…" required />
             </div>
           `,
           saveText: 'Agregar',
         })
         modal.saveBtn.addEventListener('click', async () => {
           const nombre = modal.bodyEl.querySelector('#m-nombre').value.trim()
-          const inicio = modal.bodyEl.querySelector('#m-inicio').value
-          const fin    = modal.bodyEl.querySelector('#m-fin').value
-          if (!nombre || !inicio || !fin) {
+          if (!nombre) {
             modal.msgEl.innerHTML =
-              '<div class="alert alert-error">Completa todos los campos obligatorios.</div>'
+              '<div class="alert alert-error">El nombre del periodo es obligatorio.</div>'
             return
           }
           modal.saveBtn.disabled = true
           modal.msgEl.innerHTML  = ''
           try {
-            // NOTE: Backend POST /api/periodos not yet implemented.
-            await createPeriodo({ nombre, fechaInicio: inicio, fechaFin: fin, anioLectivoId: Number(anioId) })
+            await createPeriodo({ nombre, anioLectivoId: Number(anioId) })
             if (!getAccessToken()) { modal.close(); return }
             modal.close()
-            expanded.add(Number(anioId))  // keep year expanded after add
+            expanded.add(Number(anioId))
             listMsg.innerHTML = `<div class="alert alert-success">Periodo "${nombre}" agregado.</div>`
             await loadList()
           } catch (err) {
@@ -502,9 +451,7 @@ export async function renderAniosLectivos(container) {
     btn.disabled = true
     try {
       const created = await createAnioLectivo({
-        anio:        Number(fd.get('anio')),
-        fechaInicio: fd.get('fechaInicio'),
-        fechaFin:    fd.get('fechaFin'),
+        anio: Number(fd.get('anio')),
       })
       formMsg.innerHTML =
         '<div class="alert alert-success">Año lectivo creado con los 3 trimestres generados automáticamente.</div>'
@@ -519,10 +466,4 @@ export async function renderAniosLectivos(container) {
   })
 
   await loadList()
-}
-
-function fmt(str) {
-  if (!str) return '—'
-  const [y, m, d] = str.split('-')
-  return `${d}/${m}/${y}`
 }

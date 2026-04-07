@@ -24,32 +24,39 @@
         <span class="logo">ATARA</span>
         <span class="subtitle">Frontend temporal</span>
       </div>
-      <ul class="nav-links">
-        <li class="nav-section-label">Usuario</li>
-        <li id="user-chip-item"><span id="user-chip" class="nav-user-chip"></span></li>
-        <li><a href="#" data-page="sesion">Mi sesión</a></li>
-        <li class="nav-section-label">Gestión</li>
-        <li><a href="#" data-page="aniosLectivos">Años Lectivos</a></li>
-        <li><a href="#" data-page="estudiantes">Estudiantes</a></li>
-        <li><a href="#" data-page="secciones">Secciones</a></li>
-        <li><a href="#" data-page="importarPiad">Importar PIAD</a></li>
-        <li style="display:none"><a href="#" data-page="matriculas">Matrículas</a></li>
-        <li style="display:none"><a href="#" data-page="evaluaciones">Evaluaciones</a></li>
-        <li><a href="#" data-page="evaluacionesSaber">Eval. por Saber</a></li>
-        <li style="display:none"><a href="#" data-page="alertas">Alertas (API)</a></li>
-        <li class="nav-section-label">Análisis</li>
-        <li><a href="#" data-page="alertasTempranas">Alertas Tempranas</a></li>
-        <li><a href="#" data-page="visualizaciones">Visualizaciones</a></li>
-        <li><a href="#" data-page="reportes">Reportes</a></li>
+      <!-- Nav generado dinámicamente por main.js según el rol -->
+      <ul class="nav-links" id="nav-links">
+        <li class="loading" style="padding:20px;font-size:12px">Cargando…</li>
       </ul>
       <div class="backend-status">
         <span id="status-dot" class="dot"></span>
         <span id="status-label">Conectando...</span>
       </div>
     </nav>
-    <main id="page-content" class="content">
-      <p class="loading">Cargando...</p>
-    </main>
+
+    <!-- Área principal: topbar de escritorio + contenido -->
+    <div class="main-area">
+      <header id="desktop-topbar">
+        <div id="topbar-title" class="topbar-title">ATARA</div>
+        <div class="topbar-right">
+          <div id="topbar-user" class="topbar-user">
+            <span id="topbar-avatar" class="topbar-avatar">?</span>
+            <div class="topbar-user-info">
+              <span id="topbar-nombre" class="topbar-nombre">—</span>
+              <span id="topbar-rol" class="topbar-rol badge badge-blue">—</span>
+            </div>
+            <div class="topbar-menu" id="topbar-menu">
+              <button class="topbar-menu-item" id="topbar-btn-sesion">Mi sesión</button>
+              <hr class="topbar-menu-sep">
+              <button class="topbar-menu-item topbar-menu-danger" id="topbar-btn-logout">Cerrar sesión</button>
+            </div>
+          </div>
+        </div>
+      </header>
+      <main id="page-content" class="content">
+        <p class="loading">Cargando...</p>
+      </main>
+    </div>
   </div>
   <script type="module" src="/src/main.js"></script>
 </body>

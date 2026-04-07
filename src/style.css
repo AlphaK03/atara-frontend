@@ -29,6 +29,11 @@ body { font-family: system-ui, -apple-system, sans-serif; background: var(--bg);
   display: flex; flex-direction: column; flex-shrink: 0;
   overflow-y: auto;
 }
+
+/* Área principal: apila topbar + contenido verticalmente */
+.main-area {
+  display: flex; flex-direction: column; flex: 1; min-width: 0; overflow: hidden;
+}
 .sidebar-header { padding: 24px 20px 16px; border-bottom: 1px solid rgba(255,255,255,0.07); }
 .logo { display: block; font-size: 20px; font-weight: 700; color: #fff; letter-spacing: 1px; }
 .subtitle { display: block; font-size: 11px; color: var(--sidebar-text); margin-top: 2px; opacity: 0.6; }
@@ -51,6 +56,68 @@ body { font-family: system-ui, -apple-system, sans-serif; background: var(--bg);
 .dot.down { background: var(--danger); }
 
 .content { flex: 1; padding: 32px; max-width: 960px; overflow-y: auto; }
+
+/* ── Desktop topbar ─────────────────────────────────────────────────────── */
+#desktop-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 52px;
+  padding: 0 24px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+  flex-shrink: 0;
+  z-index: 10;
+}
+.topbar-title {
+  font-size: 13px; font-weight: 600; color: var(--text-muted); letter-spacing: 0.03em;
+}
+.topbar-right { display: flex; align-items: center; gap: 12px; }
+
+/* User info + dropdown trigger */
+.topbar-user {
+  position: relative;
+  display: flex; align-items: center; gap: 10px;
+  cursor: pointer; padding: 5px 10px; border-radius: 8px;
+  transition: background 0.15s;
+  user-select: none;
+}
+.topbar-user:hover { background: var(--bg); }
+.topbar-user.open  { background: var(--bg); }
+
+.topbar-avatar {
+  width: 32px; height: 32px; border-radius: 50%;
+  background: var(--accent); color: #fff;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 13px; font-weight: 700; flex-shrink: 0;
+}
+.topbar-user-info { display: flex; flex-direction: column; gap: 1px; }
+.topbar-nombre { font-size: 13px; font-weight: 600; color: var(--text); line-height: 1.2; }
+.topbar-rol    { font-size: 10px; align-self: flex-start; }
+
+/* Dropdown menu */
+.topbar-menu {
+  display: none;
+  position: absolute;
+  top: calc(100% + 6px); right: 0;
+  width: 180px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: 0 4px 16px rgba(0,0,0,0.12);
+  z-index: 100;
+  padding: 4px 0;
+}
+.topbar-user.open .topbar-menu { display: block; }
+.topbar-menu-item {
+  display: block; width: 100%; text-align: left;
+  padding: 9px 16px; background: none; border: none; cursor: pointer;
+  font-size: 13px; color: var(--text); transition: background 0.12s;
+}
+.topbar-menu-item:hover { background: var(--bg); }
+.topbar-menu-danger { color: var(--danger); }
+.topbar-menu-sep { border: none; border-top: 1px solid var(--border); margin: 4px 0; }
 
 /* Typography */
 h1 { font-size: 22px; font-weight: 700; margin-bottom: 6px; }
@@ -299,6 +366,12 @@ hr { border: none; border-top: 1px solid var(--border); margin: 24px 0; }
 
   /* Top bar visible en móvil */
   #mobile-topbar { display: flex; }
+
+  /* Desktop topbar oculto en móvil */
+  #desktop-topbar { display: none; }
+
+  /* .main-area en móvil ocupa toda la pantalla */
+  .main-area { overflow: visible; }
 
   /* El contenido baja para dejar espacio al top bar fijo */
   .content {
