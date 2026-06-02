@@ -731,27 +731,30 @@ body.login-mode #mobile-bottom-nav {
   display: none !important;
 }
 body.login-mode #app        { height: 100vh; }
-body.login-mode .main-area  { height: 100vh; }
+body.login-mode .main-area  { height: 100vh; overflow-y: auto; }
 body.login-mode #page-content {
   padding: 0;
   max-width: none;
   height: 100vh;
-  overflow: hidden;
+  overflow-y: auto;
+  overflow-x: hidden;
 }
 
 .login-screen {
   display: grid;
   grid-template-columns: minmax(360px, 440px) 1fr;
-  height: 100vh;
+  min-height: 100vh;
   background: #fff;
 }
 
 .login-left {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: center;
-  padding: 24px;
+  padding: 32px 24px;
   background: #fff;
+  overflow-y: auto;
+  min-height: 100vh;
 }
 
 .login-card {
@@ -911,10 +914,44 @@ body.login-mode #page-content {
   display: block;
 }
 
+/* Chips de selección de materias en registro */
+.materia-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.materia-chip-toggle {
+  display: inline-flex;
+  align-items: center;
+  padding: 8px 14px;
+  border-radius: 999px;
+  border: 2px solid var(--border);
+  background: #fff;
+  color: var(--text-muted);
+  font-family: 'Nunito Sans', sans-serif;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s, color 0.15s;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  min-height: 40px;
+}
+.materia-chip-toggle:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.materia-chip-toggle.selected {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #fff;
+}
+
 @media (max-width: 768px) {
-  .login-screen { grid-template-columns: 1fr; }
+  .login-screen { grid-template-columns: 1fr; height: auto; min-height: 100vh; }
   .login-right  { display: none; }
-  .login-card   { max-width: 360px; }
+  .login-left   { min-height: auto; padding: 32px 20px calc(40px + env(safe-area-inset-bottom, 0px)); }
+  .login-card   { max-width: 100%; }
 }
 
 /* ───────────────────────────────────────────────────────────────────────── */

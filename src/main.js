@@ -460,7 +460,14 @@ function showResetStep2(correo) {
 }
 
 // ── Auto-registro de docentes ─────────────────────────────────────────────
-function showRegistro() {
+async function showRegistro() {
+  // Fetch materias without auth (endpoint is public)
+  let materias = []
+  try {
+    const res = await fetch('/api/catalogos/saberes/materias')
+    if (res.ok) materias = await res.json()
+  } catch { /* mostrar form de todas formas */ }
+
   content.innerHTML = `
     <div class="login-screen">
       <div class="login-left">
@@ -493,6 +500,14 @@ function showRegistro() {
                     <path d="M3 7l9 6 9-6"/>
                   </svg>
                 </span>
+              </div>
+            </div>
+            <div class="login-field">
+              <label>Materias que impartes <span style="color:var(--danger)">*</span></label>
+              <div class="materia-chips" id="reg-materias">
+                ${materias.length
+                  ? materias.map(m => `<button type="button" class="materia-chip-toggle" data-id="${m.id}">${m.nombre}</button>`).join('')
+                  : '<span style="color:var(--text-muted);font-size:13px">No se pudieron cargar las materias.</span>'}
               </div>
             </div>
             <div class="login-field">
@@ -529,6 +544,11 @@ function showRegistro() {
   const btn      = content.querySelector('#reg-btn')
   const errorDiv = content.querySelector('#reg-error')
 
+  // Toggle materia chips
+  content.querySelectorAll('.materia-chip-toggle').forEach(chip => {
+    chip.addEventListener('click', () => chip.classList.toggle('selected'))
+  })
+
   content.querySelector('#reg-btn-volver').addEventListener('click', () => showLogin())
 
   form.addEventListener('submit', async e => {
@@ -538,19 +558,22 @@ function showRegistro() {
     const correo    = content.querySelector('#reg-correo').value.trim()
     const pass      = content.querySelector('#reg-pass').value
     const confirmar = content.querySelector('#reg-confirmar').value
+    const materiasIds = [...content.querySelectorAll('.materia-chip-toggle.selected')]
+      .map(c => parseInt(c.dataset.id, 10))
 
-    if (!nombre)    { errorDiv.textContent = 'Ingresa tu nombre.'; return }
-    if (!apellidos) { errorDiv.textContent = 'Ingresa tus apellidos.'; return }
-    if (!correo)    { errorDiv.textContent = 'Ingresa tu correo institucional.'; return }
+    if (!nombre)              { errorDiv.textContent = 'Ingresa tu nombre.'; return }
+    if (!apellidos)           { errorDiv.textContent = 'Ingresa tus apellidos.'; return }
+    if (!correo)              { errorDiv.textContent = 'Ingresa tu correo institucional.'; return }
+    if (materiasIds.length === 0) { errorDiv.textContent = 'Selecciona al menos una materia.'; return }
     if (!validarPasswordConToasts(pass)) {
       errorDiv.textContent = 'La contraseña no cumple los requisitos de seguridad.'
       return
     }
-    if (pass !== confirmar) { errorDiv.textContent = 'Las contraseñas no coinciden.'; return }
+    if (pass !== confirmar)   { errorDiv.textContent = 'Las contraseñas no coinciden.'; return }
 
     btn.disabled = true; btn.textContent = 'Creando cuenta…'; errorDiv.textContent = ''
     try {
-      await registro(nombre, apellidos, correo, pass)
+      await registro(nombre, apellidos, correo, pass, materiasIds)
       showLogin('Cuenta creada. Revisa tu correo para verificar tu dirección y luego inicia sesión.')
     } catch (err) {
       errorDiv.textContent = err.message

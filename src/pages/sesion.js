@@ -1,4 +1,4 @@
-import { getMe, logout, getMaterias, getSecciones, getAnioLectivoActivo } from '../api.js'
+import { getMe, logout, getMaterias, getSecciones, getAnioLectivoActivo, actualizarMisMaterias } from '../api.js'
 
 const ROL_LABEL = {
   ADMIN:        'Administrador',
@@ -111,6 +111,7 @@ export async function renderSesion(container) {
               <span class="sesion-meta-icon">${ICONS.book}</span>
               Materias
               <span class="sesion-count">${hasMaterias ? me.materiaIds.length : 0}</span>
+              <button class="btn btn-secondary btn-sm" id="btn-editar-materias" style="margin-left:auto">Editar</button>
             </div>
             <div class="sesion-chips">
               ${hasMaterias
@@ -148,6 +149,67 @@ export async function renderSesion(container) {
     logoutMsg.innerHTML = '<div class="alert alert-info" style="font-size:13px">Cerrando tu sesión, espera un momento…</div>'
     await logout()
     window.dispatchEvent(new CustomEvent('atara:session-expired'))
+  })
+
+  // Editar materias (solo docentes/coordinadores)
+  if (me.rol !== 'ADMIN') {
+    container.querySelector('#btn-editar-materias')?.addEventListener('click', () => {
+      mostrarModalEditarMaterias(container, me, catalogoMaterias)
+    })
+  }
+}
+
+function mostrarModalEditarMaterias(container, me, catalogo) {
+  const seleccionados = new Set(me.materiaIds ?? [])
+
+  const overlay = document.createElement('div')
+  overlay.className = 'atara-overlay'
+  overlay.innerHTML = `
+    <div class="atara-box atara-modal-box">
+      <h2 style="margin:0 0 6px;font-family:'Sora',sans-serif;font-size:16px;font-weight:700">Editar materias</h2>
+      <p style="font-size:13px;color:var(--text-muted);margin-bottom:20px">Selecciona las materias que impartes.</p>
+      <div class="materia-chips" id="modal-chips" style="margin-bottom:20px">
+        ${(catalogo || []).map(m => `
+          <button type="button" class="materia-chip-toggle${seleccionados.has(m.id) ? ' selected' : ''}" data-id="${m.id}">
+            ${escHtml(m.nombre)}
+          </button>
+        `).join('')}
+      </div>
+      <div id="modal-mat-error" style="color:var(--danger);font-size:13px;min-height:18px;margin-bottom:10px"></div>
+      <div style="display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap">
+        <button class="btn btn-secondary" id="btn-modal-cancelar">Cancelar</button>
+        <button class="btn btn-primary" id="btn-modal-guardar">Guardar cambios</button>
+      </div>
+    </div>
+  `
+
+  document.body.appendChild(overlay)
+
+  overlay.querySelectorAll('.materia-chip-toggle').forEach(chip => {
+    chip.addEventListener('click', () => chip.classList.toggle('selected'))
+  })
+
+  overlay.querySelector('#btn-modal-cancelar').addEventListener('click', () => overlay.remove())
+  overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove() })
+
+  overlay.querySelector('#btn-modal-guardar').addEventListener('click', async () => {
+    const ids = [...overlay.querySelectorAll('.materia-chip-toggle.selected')]
+      .map(c => parseInt(c.dataset.id, 10))
+    const errEl = overlay.querySelector('#modal-mat-error')
+    const btnGuardar = overlay.querySelector('#btn-modal-guardar')
+
+    if (ids.length === 0) { errEl.textContent = 'Selecciona al menos una materia.'; return }
+
+    btnGuardar.disabled = true; btnGuardar.textContent = 'Guardando…'
+    try {
+      await actualizarMisMaterias(ids)
+      overlay.remove()
+      // Re-render the page to reflect changes
+      renderSesion(container)
+    } catch (err) {
+      errEl.textContent = err.message
+      btnGuardar.disabled = false; btnGuardar.textContent = 'Guardar cambios'
+    }
   })
 }
 
