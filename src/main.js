@@ -4,7 +4,8 @@ import logoUNA    from './assets/images/logos/logo_una.webp'
 import fondoLogin from './assets/images/backgrounds/fondo login.svg'
 import { checkHealth, getAccessToken, getContextoUsuario, login, logout,
          clearAccessToken, clearRefreshToken, clearUserId,
-         solicitarResetPassword, confirmarResetPassword, cambiarPassword } from './api.js'
+         solicitarResetPassword, confirmarResetPassword, cambiarPassword,
+         registro } from './api.js'
 import { showToast } from './utils/toast.js'
 import { renderAniosLectivos }    from './pages/aniosLectivos.js'
 import { renderEstudiantes }      from './pages/estudiantes.js'
@@ -239,6 +240,7 @@ function showLogin(notice = '') {
             <div id="login-error" class="login-error"></div>
             <button type="submit" class="login-submit" id="login-btn">Ingresar</button>
             <button type="button" class="login-forgot" id="btn-forgot">¿Olvidaste tu contraseña?</button>
+            <button type="button" class="login-forgot" id="btn-registro">¿Eres nuevo? Crear cuenta</button>
           </form>
         </div>
       </div>
@@ -276,6 +278,7 @@ function showLogin(notice = '') {
 
   form.addEventListener('submit', doLogin)
   content.querySelector('#btn-forgot').addEventListener('click', showResetStep1)
+  content.querySelector('#btn-registro').addEventListener('click', showRegistro)
 }
 
 // ── Política de contraseña segura (debe coincidir con @PasswordSegura del backend) ──
@@ -453,6 +456,106 @@ function showResetStep2(correo) {
       errorDiv.textContent = 'Código reenviado. Revisa tu correo.'
       setTimeout(() => { errorDiv.textContent = ''; errorDiv.style.color = '' }, 4000)
     } catch { /* ignorar */ }
+  })
+}
+
+// ── Auto-registro de docentes ─────────────────────────────────────────────
+function showRegistro() {
+  content.innerHTML = `
+    <div class="login-screen">
+      <div class="login-left">
+        <div class="login-card">
+          <div class="login-logo-wrap">
+            <img src="${logoAtara}" alt="ATARA" class="login-logo">
+          </div>
+          <h2 class="login-title">Crear cuenta</h2>
+          <p class="login-subtitle">Solo disponible para correos institucionales: <strong>@una.ac.cr</strong>, <strong>@mep.go.cr</strong>.</p>
+          <form class="login-form" id="reg-form" autocomplete="on">
+            <div class="login-field">
+              <label for="reg-nombre">Nombre</label>
+              <div class="login-input-group">
+                <input type="text" id="reg-nombre" placeholder="Tu nombre" autocomplete="given-name">
+              </div>
+            </div>
+            <div class="login-field">
+              <label for="reg-apellidos">Apellidos</label>
+              <div class="login-input-group">
+                <input type="text" id="reg-apellidos" placeholder="Tus apellidos" autocomplete="family-name">
+              </div>
+            </div>
+            <div class="login-field">
+              <label for="reg-correo">Correo institucional</label>
+              <div class="login-input-group">
+                <input type="email" id="reg-correo" placeholder="usuario@una.ac.cr" autocomplete="email">
+                <span class="login-input-icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="3" y="5" width="18" height="14" rx="2"/>
+                    <path d="M3 7l9 6 9-6"/>
+                  </svg>
+                </span>
+              </div>
+            </div>
+            <div class="login-field">
+              <label for="reg-pass">Contraseña</label>
+              <div class="login-input-group">
+                <input type="password" id="reg-pass" placeholder="Nueva contraseña" autocomplete="new-password">
+                <span class="login-input-icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 018 0v4"/>
+                  </svg>
+                </span>
+              </div>
+              <p class="login-hint">${PASSWORD_HINT}</p>
+            </div>
+            <div class="login-field">
+              <label for="reg-confirmar">Confirmar contraseña</label>
+              <div class="login-input-group">
+                <input type="password" id="reg-confirmar" placeholder="Repite la contraseña" autocomplete="new-password">
+              </div>
+            </div>
+            <div id="reg-error" class="login-error"></div>
+            <button type="submit" class="login-submit" id="reg-btn">Crear cuenta</button>
+            <button type="button" class="login-forgot" id="reg-btn-volver">¿Ya tienes cuenta? Iniciar sesión</button>
+          </form>
+        </div>
+      </div>
+      <div class="login-right">
+        <img src="${fondoLogin}" alt="" class="login-illustration" aria-hidden="true">
+      </div>
+    </div>
+  `
+
+  const form     = content.querySelector('#reg-form')
+  const btn      = content.querySelector('#reg-btn')
+  const errorDiv = content.querySelector('#reg-error')
+
+  content.querySelector('#reg-btn-volver').addEventListener('click', () => showLogin())
+
+  form.addEventListener('submit', async e => {
+    e.preventDefault()
+    const nombre    = content.querySelector('#reg-nombre').value.trim()
+    const apellidos = content.querySelector('#reg-apellidos').value.trim()
+    const correo    = content.querySelector('#reg-correo').value.trim()
+    const pass      = content.querySelector('#reg-pass').value
+    const confirmar = content.querySelector('#reg-confirmar').value
+
+    if (!nombre)    { errorDiv.textContent = 'Ingresa tu nombre.'; return }
+    if (!apellidos) { errorDiv.textContent = 'Ingresa tus apellidos.'; return }
+    if (!correo)    { errorDiv.textContent = 'Ingresa tu correo institucional.'; return }
+    if (!validarPasswordConToasts(pass)) {
+      errorDiv.textContent = 'La contraseña no cumple los requisitos de seguridad.'
+      return
+    }
+    if (pass !== confirmar) { errorDiv.textContent = 'Las contraseñas no coinciden.'; return }
+
+    btn.disabled = true; btn.textContent = 'Creando cuenta…'; errorDiv.textContent = ''
+    try {
+      await registro(nombre, apellidos, correo, pass)
+      showLogin('Cuenta creada. Revisa tu correo para verificar tu dirección y luego inicia sesión.')
+    } catch (err) {
+      errorDiv.textContent = err.message
+      btn.disabled = false; btn.textContent = 'Crear cuenta'
+    }
   })
 }
 

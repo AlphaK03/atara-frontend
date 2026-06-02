@@ -94,6 +94,10 @@ async function request(method, path, body, isRetry = false, { redirectOn401 = tr
 }
 
 // ── Auth ──────────────────────────────────────────────────────────────────
+export async function registro(nombre, apellidos, correo, password) {
+  await request('POST', '/auth/registro', { nombre, apellidos, correo, password })
+}
+
 export async function login(correo, password) {
   _meCache = null
   const data = await request('POST', '/auth/login', { correo, password })
