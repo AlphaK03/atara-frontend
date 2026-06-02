@@ -469,19 +469,8 @@ function showCambiarPasswordForzado() {
             <img src="${logoAtara}" alt="ATARA" class="login-logo">
           </div>
           <h2 class="login-title">Establece tu contraseña</h2>
-          <p class="login-subtitle">Por seguridad, debes crear tu propia contraseña antes de continuar. Usa la contraseña temporal que recibiste por correo.</p>
+          <p class="login-subtitle">Por seguridad, debes crear tu propia contraseña antes de continuar.</p>
           <form class="login-form" id="fp-form">
-            <div class="login-field">
-              <label for="fp-actual">Contraseña temporal</label>
-              <div class="login-input-group">
-                <input type="password" id="fp-actual" placeholder="Contraseña recibida por correo" autocomplete="current-password">
-                <span class="login-input-icon" aria-hidden="true">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 018 0v4"/>
-                  </svg>
-                </span>
-              </div>
-            </div>
             <div class="login-field">
               <label for="fp-nueva">Nueva contraseña</label>
               <div class="login-input-group">
@@ -517,10 +506,8 @@ function showCambiarPasswordForzado() {
 
   form.addEventListener('submit', async e => {
     e.preventDefault()
-    const actual    = content.querySelector('#fp-actual').value
     const nueva     = content.querySelector('#fp-nueva').value
     const confirmar = content.querySelector('#fp-confirmar').value
-    if (!actual)            { errorDiv.textContent = 'Ingresa la contraseña temporal.'; return }
     if (!validarPasswordConToasts(nueva)) {
       errorDiv.textContent = 'La contraseña no cumple los requisitos de seguridad.'
       return
@@ -528,7 +515,7 @@ function showCambiarPasswordForzado() {
     if (nueva !== confirmar){ errorDiv.textContent = 'Las contraseñas no coinciden.'; return }
     btn.disabled = true; btn.textContent = 'Guardando…'; errorDiv.textContent = ''
     try {
-      await cambiarPassword(actual, nueva)
+      await cambiarPassword(null, nueva)
       await afterLogin()
     } catch (err) {
       errorDiv.textContent = err.message

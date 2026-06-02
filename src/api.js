@@ -361,7 +361,7 @@ export const updateUsuario  = (id, data)   => request('PUT',    `/admin/usuarios
 export const deleteUsuario        = (id)           => request('DELETE', `/admin/usuarios/${id}`)
 export const toggleEstadoUsuario  = (id)           => request('PATCH',  `/admin/usuarios/${id}/estado`)
 export const cambiarPassword      = (passwordActual, nuevaPassword) =>
-  request('PUT', '/auth/cambiar-password', { passwordActual, nuevaPassword })
+  request('PUT', '/auth/cambiar-password', { ...(passwordActual ? { passwordActual } : {}), nuevaPassword })
 
 // ── Admin: Centros Educativos ─────────────────────────────────────────────
 // Solo ADMIN. Sin DELETE: los centros se conservan como histórico.
