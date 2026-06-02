@@ -1,4 +1,5 @@
 import logoUNASvg from '../assets/images/logos/LogoUNA.svg'
+import logoDEBpng from '../assets/images/logos/DEB.png'
 
 export function renderAcerca(container) {
   container.innerHTML = `
@@ -59,17 +60,42 @@ export function renderAcerca(container) {
 
       </div>
 
+      <section class="card acerca-devs">
+        <h2 style="margin-top:0">Equipo de desarrollo</h2>
+        <div class="acerca-devs-grid">
+
+          <div class="acerca-dev-card">
+            <div class="acerca-dev-avatar">KJC</div>
+            <div class="acerca-dev-info">
+              <p class="acerca-dev-name">Keylor Josué Cortés Cascante</p>
+              <p class="acerca-dev-role">Desarrollador de software</p>
+              <p class="acerca-dev-school">Escuela de Informática, Universidad Nacional de Costa Rica</p>
+            </div>
+          </div>
+
+          <div class="acerca-dev-card">
+            <div class="acerca-dev-avatar">JLV</div>
+            <div class="acerca-dev-info">
+              <p class="acerca-dev-name">Jose Luis Valverde Solís</p>
+              <p class="acerca-dev-role">Desarrollador de software</p>
+              <p class="acerca-dev-school">Escuela de Informática, Universidad Nacional de Costa Rica</p>
+            </div>
+          </div>
+
+        </div>
+      </section>
+
       <section class="card acerca-inst">
         <h2 style="margin-top:0">Institución responsable</h2>
         <div class="acerca-inst-body">
           <div class="acerca-inst-logo-wrap">
-            <img src="${logoUNASvg}" alt="Universidad Nacional de Costa Rica" class="acerca-inst-logo-img" />
+            <img src="${logoDEBpng}" alt="División de Educación Básica, CIDE-UNA" class="acerca-inst-logo-img" />
           </div>
           <div class="acerca-inst-info">
-            <p class="acerca-inst-nombre">Universidad Nacional de Costa Rica</p>
+            <p class="acerca-inst-nombre">División de Educación Básica</p>
             <p class="acerca-inst-unidad">Centro de Investigación y Docencia en Educación (CIDE)</p>
-            <p class="acerca-inst-unidad">División de Educación Básica</p>
-            <p class="acerca-inst-nota">ATARA es un proyecto académico desarrollado en el marco de las actividades de investigación y extensión de la División de Educación Básica del CIDE-UNA, orientado a la mejora de los procesos de enseñanza y aprendizaje en la educación primaria costarricense.</p>
+            <p class="acerca-inst-unidad">Universidad Nacional de Costa Rica</p>
+            <p class="acerca-inst-nota">ATARA es un proyecto académico desarrollado en el marco de las actividades de investigación y extensión de la División de Educación Básica del CIDE, Universidad Nacional de Costa Rica, orientado a la mejora de los procesos de enseñanza y aprendizaje en la educación primaria costarricense.</p>
           </div>
         </div>
       </section>
@@ -133,9 +159,48 @@ export function renderAcerca(container) {
         color: var(--text-muted); margin: 12px 0 0;
       }
 
+      .acerca-devs-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+        gap: 14px;
+      }
+      .acerca-dev-card {
+        display: flex;
+        gap: 14px;
+        align-items: flex-start;
+        background: var(--bg);
+        border-radius: var(--radius);
+        padding: 14px;
+      }
+      .acerca-dev-avatar {
+        flex-shrink: 0;
+        width: 44px; height: 44px;
+        border-radius: 50%;
+        background: var(--primary);
+        color: #fff;
+        font-family: 'Sora', sans-serif;
+        font-size: 12px; font-weight: 700;
+        display: flex; align-items: center; justify-content: center;
+        letter-spacing: 0.5px;
+      }
+      .acerca-dev-name {
+        font-family: 'Sora', sans-serif;
+        font-size: 14px; font-weight: 700;
+        color: var(--text); margin: 0 0 3px;
+      }
+      .acerca-dev-role {
+        font-size: 12px; font-weight: 600;
+        color: var(--primary); margin: 0 0 4px;
+      }
+      .acerca-dev-school {
+        font-size: 12px; line-height: 1.5;
+        color: var(--text-muted); margin: 0;
+      }
+
       @media (max-width: 600px) {
         .acerca-inst-body { flex-direction: column; }
         .acerca-grid { grid-template-columns: 1fr; }
+        .acerca-devs-grid { grid-template-columns: 1fr; }
       }
     </style>
   `

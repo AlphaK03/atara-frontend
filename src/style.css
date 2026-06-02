@@ -1260,6 +1260,15 @@ body.login-mode #page-content {
   font-style: italic;
 }
 
+.footer-text-link {
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  text-decoration-color: rgba(212,168,168,0.35);
+  transition: color 0.15s;
+}
+.footer-text-link:hover { color: #fff; text-decoration-color: rgba(255,255,255,0.5); }
+
 .footer-links {
   list-style: none;
   margin: 0; padding: 0;
