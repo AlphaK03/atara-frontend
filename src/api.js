@@ -414,4 +414,5 @@ export const updatePeriodo     = (id, data) => request('PUT',    `/periodos/${id
 export const deletePeriodo     = (id)       => request('DELETE', `/periodos/${id}`)
 
 // ── Health ───────────────────────────────────────────────────────────────
-export const checkHealth = () => fetch('/actuator/health').then(r => r.json())
+const ACTUATOR_BASE = (import.meta.env.VITE_API_URL || '') + '/actuator'
+export const checkHealth = () => fetch(ACTUATOR_BASE + '/health').then(r => r.json())
