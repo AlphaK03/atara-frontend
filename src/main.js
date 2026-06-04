@@ -5,7 +5,7 @@ import fondoLogin from './assets/images/backgrounds/fondo login.svg'
 import { checkHealth, getAccessToken, getContextoUsuario, login, logout,
          clearAccessToken, clearRefreshToken, clearUserId,
          solicitarResetPassword, confirmarResetPassword, cambiarPassword,
-         registro } from './api.js'
+         registro, getMaterias } from './api.js'
 import { showToast } from './utils/toast.js'
 import { renderAniosLectivos }    from './pages/aniosLectivos.js'
 import { renderEstudiantes }      from './pages/estudiantes.js'
@@ -461,11 +461,9 @@ function showResetStep2(correo) {
 
 // ── Auto-registro de docentes ─────────────────────────────────────────────
 async function showRegistro() {
-  // Fetch materias without auth (endpoint is public)
   let materias = []
   try {
-    const res = await fetch('/api/catalogos/saberes/materias')
-    if (res.ok) materias = await res.json()
+    materias = await getMaterias()
   } catch { /* mostrar form de todas formas */ }
 
   content.innerHTML = `
