@@ -514,9 +514,10 @@ export async function renderImportarPiad(container) {
       })
 
       const partes = []
-      if (res.creados)        partes.push(`${res.creados} nuevo${res.creados !== 1 ? 's' : ''} creado${res.creados !== 1 ? 's' : ''}`)
-      if (res.matriculados)   partes.push(`${res.matriculados} matriculado${res.matriculados !== 1 ? 's' : ''}`)
-      if (res.yaMatriculados) partes.push(`${res.yaMatriculados} ya en la sección`)
+      if (res.creados)          partes.push(`${res.creados} nuevo${res.creados !== 1 ? 's' : ''} creado${res.creados !== 1 ? 's' : ''}`)
+      if (res.matriculados)     partes.push(`${res.matriculados} matriculado${res.matriculados !== 1 ? 's' : ''}`)
+      if (res.yaMatriculados)   partes.push(`${res.yaMatriculados} ya en la sección`)
+      if (res.yaEnOtraSeccion)  partes.push(`${res.yaEnOtraSeccion} en otra sección`)
       const resumen = partes.length ? partes.join(' · ') : 'sin cambios'
 
       let html = `
@@ -526,9 +527,21 @@ export async function renderImportarPiad(container) {
             ${res.total} fila${res.total !== 1 ? 's' : ''} procesada${res.total !== 1 ? 's' : ''} ·
             ${res.creados} creado${res.creados !== 1 ? 's' : ''} ·
             ${res.reutilizados} reutilizado${res.reutilizados !== 1 ? 's' : ''} (ya existían) ·
-            ${res.yaMatriculados} omitido${res.yaMatriculados !== 1 ? 's' : ''} (ya en la sección)
+            ${res.yaMatriculados} omitido${res.yaMatriculados !== 1 ? 's' : ''} (ya en la sección) ·
+            ${res.yaEnOtraSeccion || 0} omitido${(res.yaEnOtraSeccion || 0) !== 1 ? 's' : ''} (ya en otra sección)
           </div>
         </div>`
+
+      // Estudiantes que ya estaban activos en otra sección del año: no es un error,
+      // pero conviene listarlos para que el docente sepa por qué no se agregaron.
+      if (res.yaEnOtraSeccion > 0) {
+        const enOtra = (res.detalle || []).filter(d => d.estado === 'YA_EN_OTRA_SECCION')
+        html += `
+          <div class="alert alert-warning" style="margin-top:8px">
+            ${res.yaEnOtraSeccion} estudiante${res.yaEnOtraSeccion !== 1 ? 's' : ''} ya matriculado${res.yaEnOtraSeccion !== 1 ? 's' : ''} en otra sección este año (no se agregaron):<br>
+            ${enOtra.map(d => `• ${d.identificacion} — ${d.nombreCompleto}`).join('<br>')}
+          </div>`
+      }
 
       if (res.errores > 0) {
         const fallidas = (res.detalle || []).filter(d => d.estado === 'ERROR')
