@@ -7,6 +7,7 @@ import { checkHealth, getAccessToken, getContextoUsuario, login, logout,
          solicitarResetPassword, confirmarResetPassword, cambiarPassword,
          registro, getMaterias } from './api.js'
 import { showToast } from './utils/toast.js'
+import { maybeStartTutorial, startTutorial } from './tutorial.js'
 import { renderAniosLectivos }    from './pages/aniosLectivos.js'
 import { renderEstudiantes }      from './pages/estudiantes.js'
 import { renderAlertasTempranas } from './pages/alertasTempranas.js'
@@ -102,6 +103,11 @@ BOTTOM_NAV_ITEMS.COORDINADOR = BOTTOM_NAV_ITEMS.DOCENTE
 
 // ── Estado global ─────────────────────────────────────────────────────────
 let _currentUser = null  // { userId, nombre, apellidos, rol, ... }
+// Señal de "primer ingreso" capturada del response del login. El backend la
+// limpia durante el login, por lo que NO puede leerse luego desde /api/auth/me;
+// se conserva aquí para lanzar el tutorial una vez completado el post-login
+// (incluido el flujo de cambio de contraseña forzado de usuarios nuevos).
+let _primerIngresoPendiente = false
 
 const content  = document.getElementById('page-content')
 const navLinks = document.getElementById('nav-links')
@@ -264,6 +270,7 @@ function showLogin(notice = '') {
     errorDiv.textContent = ''
     try {
       const loginData = await login(correo, pass)
+      _primerIngresoPendiente = !!loginData?.primerIngreso
       if (loginData?.debeCambiarPassword) {
         showCambiarPasswordForzado()
       } else {
@@ -666,7 +673,19 @@ async function afterLogin() {
     : (DEFAULT_PAGE[me.rol] ?? 'aniosLectivos')
   renderBottomNav(me.rol, startPage)
   navigate(startPage)
+  updateTutorialMenuButton(me.rol)
   window.dispatchEvent(new CustomEvent('atara:logged-in'))
+
+  // Tutorial de bienvenida: solo docentes y solo en su primer ingreso.
+  maybeStartTutorial({ rol: me.rol, primerIngreso: _primerIngresoPendiente })
+  _primerIngresoPendiente = false
+}
+
+// El botón "Ver tutorial" del menú de perfil solo tiene sentido para docentes
+// (el administrador no usa el tutorial). Permite reabrir la guía cuando se quiera.
+function updateTutorialMenuButton(rol) {
+  const btn = document.getElementById('topbar-btn-tutorial')
+  if (btn) btn.style.display = rol === 'ADMIN' ? 'none' : ''
 }
 
 // ── Bootstrap: valida token antes de mostrar cualquier contenido ──────────
@@ -698,6 +717,7 @@ async function bootstrap() {
       : (DEFAULT_PAGE[me.rol] ?? 'aniosLectivos')
     renderBottomNav(me.rol, startPage)
     navigate(startPage)
+    updateTutorialMenuButton(me.rol)
   } catch {
     clearAccessToken(); clearRefreshToken(); clearUserId()
     showLogin()
@@ -733,6 +753,11 @@ document.addEventListener('click', () => {
 document.getElementById('topbar-btn-sesion')?.addEventListener('click', () => {
   topbarUser?.classList.remove('open')
   navigate('sesion')
+})
+
+document.getElementById('topbar-btn-tutorial')?.addEventListener('click', () => {
+  topbarUser?.classList.remove('open')
+  startTutorial()
 })
 
 document.getElementById('topbar-btn-logout')?.addEventListener('click', async () => {
