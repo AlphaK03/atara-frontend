@@ -1375,6 +1375,10 @@ body.login-mode #site-footer { display: none !important; }
   .content {
     padding-bottom: calc(72px + env(safe-area-inset-bottom, 0px));
   }
+
+  #site-footer {
+    padding-bottom: calc(60px + env(safe-area-inset-bottom, 0px));
+  }
 }
 
 /* ── Selector con búsqueda (makeSearchableSelect) ─────────────────────────── */
