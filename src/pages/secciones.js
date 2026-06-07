@@ -97,7 +97,17 @@ export async function renderSecciones(container) {
     try {
       const secciones = await getSecciones(anioId)
       if (!secciones.length) {
-        secBody.innerHTML = `<div style="text-align:center;padding:40px 20px;color:var(--text-muted)"><p>No hay secciones para este año lectivo.</p></div>`
+        secBody.innerHTML = `
+          <div style="text-align:center;padding:48px 24px;color:var(--text-muted);max-width:420px;margin:0 auto">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="48" height="48" style="margin:0 auto 16px;display:block;opacity:.35">
+              <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/>
+              <path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+            </svg>
+            <p style="font-size:15px;font-weight:700;color:#374151;margin-bottom:8px">Todavía no tienes secciones</p>
+            <p style="font-size:13px;line-height:1.65">
+              Usa el botón <strong>+ Nueva sección</strong> para crear tu primera sección y empezar a registrar estudiantes y evaluaciones.
+            </p>
+          </div>`
         return
       }
 

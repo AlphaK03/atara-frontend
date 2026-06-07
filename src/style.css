@@ -12,7 +12,7 @@
   --primary: #005eb8;
   --danger: #e11d48;
   --success: #059669;
-  --warning: #f59e0b;
+  --warning: #d97706;  /* amber-600: ratio 3.3:1 sobre blanco — suficiente para texto grande e iconos */
   --border: #e2e8e0;
   --text: #1f2937;
   --text-muted: #6b7280;
@@ -1420,3 +1420,52 @@ body.login-mode #site-footer { display: none !important; }
 .ss-item:hover { background: #eff6ff; }
 .ss-item.ss-placeholder { color: #64748b; font-style: italic; }
 .ss-empty { padding: 7px 12px; font-size: 12px; color: #9ca3af; }
+
+/* ══════════════════════════════════════════════════════════════
+   DOT DE ALERTA — centrado vertical del SVG de forma
+   ══════════════════════════════════════════════════════════════ */
+.det-eje-dot {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.det-eje-dot.alta  { color: #b91c1c; }
+.det-eje-dot.media { color: #92400e; }
+
+/* ══════════════════════════════════════════════════════════════
+   PRINT — ocultar chrome de la app al imprimir directamente
+   ══════════════════════════════════════════════════════════════ */
+@media print {
+  .sidebar,
+  #desktop-topbar,
+  #mobile-topbar,
+  #mobile-bottom-nav,
+  #sidebar-backdrop,
+  #site-footer,
+  .page-desc,
+  .btn,
+  button:not(.print-keep) {
+    display: none !important;
+  }
+
+  body, #app, .main-area, .content {
+    display: block !important;
+    height: auto !important;
+    overflow: visible !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+
+  .content {
+    padding: 16px !important;
+  }
+
+  .card {
+    break-inside: avoid;
+    box-shadow: none !important;
+    border: 1px solid #e2e8e0 !important;
+  }
+
+  a[href]::after { content: none !important; }
+}

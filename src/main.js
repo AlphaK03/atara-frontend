@@ -108,6 +108,8 @@ let _currentUser = null  // { userId, nombre, apellidos, rol, ... }
 // se conserva aquí para lanzar el tutorial una vez completado el post-login
 // (incluido el flujo de cambio de contraseña forzado de usuarios nuevos).
 let _primerIngresoPendiente = false
+let _sessionExpiresIn = 1800  // segundos; se actualiza desde el response del login
+let _sessionWarnTimer = null
 
 const content  = document.getElementById('page-content')
 const navLinks = document.getElementById('nav-links')
@@ -281,6 +283,7 @@ function showLogin(notice = '') {
     try {
       const loginData = await login(correo, pass)
       _primerIngresoPendiente = !!loginData?.primerIngreso
+      if (loginData?.expiresIn) _sessionExpiresIn = loginData.expiresIn
       if (loginData?.debeCambiarPassword) {
         showCambiarPasswordForzado()
       } else {
@@ -403,7 +406,7 @@ function showResetStep2(correo) {
             <img src="${logoAtara}" alt="ATARA" class="login-logo">
           </div>
           <h2 class="login-title">Ingresa el código</h2>
-          <p class="login-subtitle">Enviamos un código de 6 dígitos a <strong>${correo}</strong>. Expira en 15 minutos.</p>
+          <p class="login-subtitle">Enviamos un código de 4 dígitos a <strong>${correo}</strong>. Expira en 15 minutos.</p>
           <form class="login-form" id="reset-form-2">
             <div class="login-field">
               <label for="reset-codigo">Código de verificación</label>
@@ -451,7 +454,7 @@ function showResetStep2(correo) {
     const codigo    = content.querySelector('#reset-codigo').value.trim()
     const nueva     = content.querySelector('#reset-nueva').value
     const confirmar = content.querySelector('#reset-confirmar').value
-    if (!/^\d{6}$/.test(codigo))  { errorDiv.textContent = 'El código debe tener 6 dígitos.'; return }
+    if (!/^\d{4}$/.test(codigo))  { errorDiv.textContent = 'El código debe tener 4 dígitos.'; return }
     if (!validarPasswordConToasts(nueva)) {
       errorDiv.textContent = 'La contraseña no cumple los requisitos de seguridad.'
       return
@@ -676,7 +679,7 @@ async function afterLogin() {
   renderFooterLinks(me.rol)
   updateTopbar(me)
   const bsElA = document.querySelector('.backend-status')
-  if (bsElA) bsElA.style.display = me.rol === 'ADMIN' ? 'flex' : 'none'
+  if (bsElA) bsElA.style.display = 'flex'
   const hashPage = window.location.hash.slice(1)
   const startPage = (hashPage && pages[hashPage] && canNavigate(hashPage))
     ? hashPage
@@ -684,6 +687,7 @@ async function afterLogin() {
   renderBottomNav(me.rol, startPage)
   navigate(startPage)
   updateTutorialMenuButton(me.rol)
+  programarAvisoSesion()
   window.dispatchEvent(new CustomEvent('atara:logged-in'))
 
   // Tutorial de bienvenida: solo docentes y solo en su primer ingreso.
@@ -696,6 +700,37 @@ async function afterLogin() {
 function updateTutorialMenuButton(rol) {
   const btn = document.getElementById('topbar-btn-tutorial')
   if (btn) btn.style.display = rol === 'ADMIN' ? 'none' : ''
+}
+
+// ── Aviso de sesión por expirar ───────────────────────────────────────────
+function programarAvisoSesion() {
+  if (_sessionWarnTimer) clearTimeout(_sessionWarnTimer)
+  // Avisar 5 minutos antes de que expire el access token
+  const warningMs = Math.max(0, (_sessionExpiresIn - 300)) * 1000
+  _sessionWarnTimer = setTimeout(() => {
+    showToast('Tu sesión expirará en 5 minutos. Guarda tu trabajo para no perderlo.', 'warning', 10000)
+  }, warningMs)
+}
+
+// ── Focus trap para el sidebar en móvil ───────────────────────────────────
+const FOCUSABLE = 'a[href], button:not([disabled]), input, select, textarea, [tabindex]:not([tabindex="-1"])'
+function trapFocus(container) {
+  const els = [...container.querySelectorAll(FOCUSABLE)].filter(el => el.offsetParent !== null)
+  if (!els.length) return
+  const first = els[0], last = els[els.length - 1]
+  container._trapHandler = e => {
+    if (e.key !== 'Tab') return
+    if (e.shiftKey) { if (document.activeElement === first) { e.preventDefault(); last.focus() } }
+    else            { if (document.activeElement === last)  { e.preventDefault(); first.focus() } }
+  }
+  container.addEventListener('keydown', container._trapHandler)
+  first.focus()
+}
+function releaseFocus(container) {
+  if (container._trapHandler) {
+    container.removeEventListener('keydown', container._trapHandler)
+    delete container._trapHandler
+  }
 }
 
 // ── Bootstrap: valida token antes de mostrar cualquier contenido ──────────
@@ -747,6 +782,7 @@ window.addEventListener('atara:navigate', e => {
 
 window.addEventListener('atara:session-expired', () => {
   _currentUser = null
+  if (_sessionWarnTimer) { clearTimeout(_sessionWarnTimer); _sessionWarnTimer = null }
   showLogin('La sesión expiró. Inicia sesión nuevamente.')
 })
 
@@ -778,6 +814,7 @@ document.getElementById('topbar-btn-logout')?.addEventListener('click', async ()
   try {
     await logout()
     _currentUser = null
+    if (_sessionWarnTimer) { clearTimeout(_sessionWarnTimer); _sessionWarnTimer = null }
     showToast('Sesión cerrada correctamente.', 'info')
     window.dispatchEvent(new CustomEvent('atara:session-expired'))
   } finally {
@@ -795,12 +832,15 @@ function closeSidebar() {
   sidebar.classList.remove('open')
   backdrop.classList.remove('visible')
   hamburger?.classList.remove('open')
+  releaseFocus(sidebar)
 }
 
 hamburger?.addEventListener('click', () => {
   const isOpen = sidebar.classList.toggle('open')
   backdrop.classList.toggle('visible', isOpen)
   hamburger.classList.toggle('open', isOpen)
+  if (isOpen) trapFocus(sidebar)
+  else releaseFocus(sidebar)
 })
 backdrop.addEventListener('click', closeSidebar)
 

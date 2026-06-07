@@ -135,6 +135,26 @@ export function renderEvaluacionesSaber(container) {
   let wizRespuestas  = {}
   let wizTempNextHandler = null  // handler temporal del paso de selección de saberes (Bug 2)
 
+  // ── Draft localStorage ────────────────────────────────────────────────────
+  function draftKey() {
+    if (!wizEstudiante || !wizMateria) return null
+    return `atara.wiz.draft.${wizEstudiante.id}.${wizMateria.id}`
+  }
+  function saveDraft() {
+    const k = draftKey()
+    if (!k) return
+    try { localStorage.setItem(k, JSON.stringify(wizRespuestas)) } catch { /* ignorar */ }
+  }
+  function loadDraft() {
+    const k = draftKey()
+    if (!k) return null
+    try { const raw = localStorage.getItem(k); return raw ? JSON.parse(raw) : null } catch { return null }
+  }
+  function clearDraft() {
+    const k = draftKey()
+    if (k) { try { localStorage.removeItem(k) } catch { /* ignorar */ } }
+  }
+
   // ── Catálogos ─────────────────────────────────────────────────────────────
   /**
    * Carga catálogos base que no dependen del nivel (tipos de saber y materias
@@ -676,6 +696,13 @@ export function renderEvaluacionesSaber(container) {
       wizModoLabel.textContent = 'Evaluación por saber'
       wizModoLabel.classList.remove('wiz-modo--recal')
       if (!wizPendientes.length) return
+      // Restaurar borrador si existe
+      const draft = loadDraft()
+      if (draft) {
+        for (const [tipoId, saved] of Object.entries(draft)) {
+          if (wizRespuestas[tipoId]) Object.assign(wizRespuestas[tipoId], saved)
+        }
+      }
       refreshWizardUI()
       wizOverlay.style.display = 'flex'
     } else {
@@ -795,6 +822,7 @@ export function renderEvaluacionesSaber(container) {
     if (!ok) return
     const isLast = wizStep === wizPendientes.length - 1
     if (isLast) {
+      clearDraft()  // evaluación completa — limpiar borrador guardado
       wizNext.disabled = true
       wizNext.textContent = 'Generando alertas…'
       try { await generarAlertasTematicasEstudiante(wizEstudiante.id, periodoSel.id, seccionSel.id) } catch (e) { console.warn('Alerta generación falló:', e?.message) }
@@ -884,6 +912,7 @@ export function renderEvaluacionesSaber(container) {
         wizBody.querySelectorAll(`.niv-btn[data-eje="${ejeId}"]`).forEach(b => {
           b.classList.toggle('niv-btn--sel', parseInt(b.dataset.val) === val)
         })
+        saveDraft()
       })
     })
 
