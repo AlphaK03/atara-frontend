@@ -214,7 +214,7 @@ function navigate(page, params = {}) {
 }
 
 // ── Login ─────────────────────────────────────────────────────────────────
-function showLogin(notice = '') {
+function showLogin(notice = '', noticeType = 'info') {
   // Ocultar topbar y sidebar (layout de pantalla completa para el login)
   document.getElementById('desktop-topbar').style.display = 'none'
   document.body.classList.add('login-mode')
@@ -254,7 +254,7 @@ function showLogin(notice = '') {
                 </span>
               </div>
             </div>
-            ${notice ? `<div class="login-notice">${notice}</div>` : ''}
+            ${notice ? `<div class="login-notice${noticeType === 'success' ? ' success' : ''}">${notice}</div>` : ''}
             <div id="login-error" class="login-error"></div>
             <button type="submit" class="login-submit" id="login-btn">Ingresar</button>
             <button type="button" class="login-forgot" id="btn-forgot">¿Olvidaste tu contraseña?</button>
@@ -463,7 +463,7 @@ function showResetStep2(correo) {
     btn.disabled = true; btn.textContent = 'Cambiando…'; errorDiv.textContent = ''
     try {
       await confirmarResetPassword(correo, codigo, nueva)
-      showLogin('Contraseña actualizada correctamente. Inicia sesión con tu nueva contraseña.')
+      showLogin('Contraseña actualizada correctamente. Inicia sesión con tu nueva contraseña.', 'success')
     } catch (err) {
       errorDiv.textContent = err.message
       btn.disabled = false; btn.textContent = 'Cambiar contraseña'
@@ -592,7 +592,7 @@ async function showRegistro() {
     btn.disabled = true; btn.textContent = 'Creando cuenta…'; errorDiv.textContent = ''
     try {
       await registro(nombre, apellidos, correo, pass, materiasIds)
-      showLogin('Cuenta creada. Revisa tu correo para verificar tu dirección y luego inicia sesión.')
+      showLogin('Cuenta creada. Revisa tu correo para verificar tu dirección y luego inicia sesión.', 'success')
     } catch (err) {
       errorDiv.textContent = err.message
       btn.disabled = false; btn.textContent = 'Crear cuenta'

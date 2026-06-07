@@ -103,7 +103,9 @@ export const actualizarMisMaterias = (materiasIds) =>
 
 export async function login(correo, password) {
   _meCache = null
-  const data = await request('POST', '/auth/login', { correo, password })
+  // redirectOn401:false evita que un 401 por credenciales incorrectas
+  // dispare el evento atara:session-expired y muestre "sesión expirada".
+  const data = await request('POST', '/auth/login', { correo, password }, false, { redirectOn401: false })
   setAccessToken(data.accessToken)
   if (data.refreshToken) setRefreshToken(data.refreshToken)
   if (data.userId) setUserId(data.userId)

@@ -887,12 +887,18 @@ body.login-mode #page-content {
 }
 
 .login-notice {
-  color: #92400e;
   font-size: 13px;
-  background: #fef3c7;
-  border: 1px solid #fde68a;
   border-radius: var(--radius);
   padding: 8px 12px;
+  /* tipo info/warning por defecto (ámbar) */
+  color: #92400e;
+  background: #fef3c7;
+  border: 1px solid #fde68a;
+}
+.login-notice.success {
+  color: #065f46;
+  background: #d1fae5;
+  border: 1px solid #6ee7b7;
 }
 
 .login-error {
