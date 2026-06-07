@@ -137,21 +137,31 @@ function renderBottomNav(rol, activePage = '') {
 
 function renderNav(rol) {
   const sections = NAV_BY_ROL[rol] || NAV_BY_ROL.DOCENTE
+  const tutorialItem = rol !== 'ADMIN'
+    ? `<li><a href="#" id="nav-btn-tutorial">Ver tutorial</a></li>`
+    : ''
   navLinks.innerHTML = `
     <li class="nav-section-label">Usuario</li>
     <li><a href="#" data-page="sesion">Mi sesión</a></li>
+    ${tutorialItem}
     ${sections.map(s => `
       <li class="nav-section-label">${s.section}</li>
       ${s.items.map(i => `<li><a href="#" data-page="${i.page}">${i.label}</a></li>`).join('')}
     `).join('')}
   `
-  // Re-bind click events para los nuevos <a>
-  navLinks.querySelectorAll('a').forEach(a => {
+  // Re-bind click events para los nuevos <a> de navegación
+  navLinks.querySelectorAll('a[data-page]').forEach(a => {
     a.addEventListener('click', e => {
       e.preventDefault()
       navigate(a.dataset.page)
       closeSidebar()
     })
+  })
+  // Botón de tutorial en el sidebar (visible en móvil vía hamburger)
+  navLinks.querySelector('#nav-btn-tutorial')?.addEventListener('click', e => {
+    e.preventDefault()
+    closeSidebar()
+    startTutorial()
   })
 }
 
