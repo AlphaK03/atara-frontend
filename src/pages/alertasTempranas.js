@@ -702,8 +702,8 @@ export async function renderAlertasTempranas(container) {
 
     const saberRows = [...porTipo.values()].map(g => {
       const nums = [
-        g.alta  ? `<span class="num alta">${g.alta}</span>`  : '',
-        g.media ? `<span class="num media">${g.media}</span>` : '',
+        g.alta  ? `<span class="num alta" title="Riesgo alto"><svg viewBox="0 0 8 8" width="7" height="7" aria-hidden="true" style="margin-right:2px;vertical-align:middle"><polygon points="4,0 8,8 0,8" fill="currentColor"/></svg>${g.alta}</span>`  : '',
+        g.media ? `<span class="num media" title="Riesgo medio"><svg viewBox="0 0 8 8" width="7" height="7" aria-hidden="true" style="margin-right:2px;vertical-align:middle"><rect x="0" y="0" width="8" height="8" fill="currentColor"/></svg>${g.media}</span>` : '',
       ].filter(Boolean).join('')
       return `<li><span class="text">${g.label}</span>${nums}</li>`
     }).join('')
@@ -759,10 +759,14 @@ export async function renderAlertasTempranas(container) {
           .sort((x, y) => (x.nivelAlerta === 'ALTA' ? 0 : 1) - (y.nivelAlerta === 'ALTA' ? 0 : 1))
           .map(a => {
             const cls = a.nivelAlerta === 'ALTA' ? 'alta' : 'media'
+            // Icono de forma distinta por nivel (no solo color) para accesibilidad daltonismo
+            const icon = a.nivelAlerta === 'ALTA'
+              ? `<svg viewBox="0 0 10 10" width="10" height="10" aria-hidden="true" style="flex-shrink:0"><polygon points="5,1 9,9 1,9" fill="currentColor"/></svg>`
+              : `<svg viewBox="0 0 10 10" width="10" height="10" aria-hidden="true" style="flex-shrink:0"><rect x="1" y="1" width="8" height="8" fill="currentColor"/></svg>`
             const pct = Math.round(Number(a.promedio) / 5 * 100)
             return `
               <div class="det-eje-row">
-                <span class="det-eje-dot ${cls}"></span>
+                <span class="det-eje-dot ${cls}" aria-label="${a.nivelAlerta === 'ALTA' ? 'Riesgo alto' : 'Riesgo medio'}">${icon}</span>
                 <span class="det-eje-name">${a.ejeNombre}</span>
                 <div class="det-bar-wrap"><div class="det-bar-fill ${cls}" style="width:${pct}%"></div></div>
                 <span class="det-score">${Number(a.promedio).toFixed(1)}</span>

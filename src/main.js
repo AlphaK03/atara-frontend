@@ -7,6 +7,7 @@ import { checkHealth, getAccessToken, getContextoUsuario, login, logout,
          solicitarResetPassword, confirmarResetPassword, cambiarPassword,
          registro, getMaterias } from './api.js'
 import { showToast } from './utils/toast.js'
+import { maybeStartTutorial, startTutorial } from './tutorial.js'
 import { renderAniosLectivos }    from './pages/aniosLectivos.js'
 import { renderEstudiantes }      from './pages/estudiantes.js'
 import { renderAlertasTempranas } from './pages/alertasTempranas.js'
@@ -102,6 +103,13 @@ BOTTOM_NAV_ITEMS.COORDINADOR = BOTTOM_NAV_ITEMS.DOCENTE
 
 // ── Estado global ─────────────────────────────────────────────────────────
 let _currentUser = null  // { userId, nombre, apellidos, rol, ... }
+// Señal de "primer ingreso" capturada del response del login. El backend la
+// limpia durante el login, por lo que NO puede leerse luego desde /api/auth/me;
+// se conserva aquí para lanzar el tutorial una vez completado el post-login
+// (incluido el flujo de cambio de contraseña forzado de usuarios nuevos).
+let _primerIngresoPendiente = false
+let _sessionExpiresIn = 1800  // segundos; se actualiza desde el response del login
+let _sessionWarnTimer = null
 
 const content  = document.getElementById('page-content')
 const navLinks = document.getElementById('nav-links')
@@ -131,21 +139,31 @@ function renderBottomNav(rol, activePage = '') {
 
 function renderNav(rol) {
   const sections = NAV_BY_ROL[rol] || NAV_BY_ROL.DOCENTE
+  const tutorialItem = rol !== 'ADMIN'
+    ? `<li><a href="#" id="nav-btn-tutorial">Ver tutorial</a></li>`
+    : ''
   navLinks.innerHTML = `
     <li class="nav-section-label">Usuario</li>
     <li><a href="#" data-page="sesion">Mi sesión</a></li>
+    ${tutorialItem}
     ${sections.map(s => `
       <li class="nav-section-label">${s.section}</li>
       ${s.items.map(i => `<li><a href="#" data-page="${i.page}">${i.label}</a></li>`).join('')}
     `).join('')}
   `
-  // Re-bind click events para los nuevos <a>
-  navLinks.querySelectorAll('a').forEach(a => {
+  // Re-bind click events para los nuevos <a> de navegación
+  navLinks.querySelectorAll('a[data-page]').forEach(a => {
     a.addEventListener('click', e => {
       e.preventDefault()
       navigate(a.dataset.page)
       closeSidebar()
     })
+  })
+  // Botón de tutorial en el sidebar (visible en móvil vía hamburger)
+  navLinks.querySelector('#nav-btn-tutorial')?.addEventListener('click', e => {
+    e.preventDefault()
+    closeSidebar()
+    startTutorial()
   })
 }
 
@@ -196,7 +214,7 @@ function navigate(page, params = {}) {
 }
 
 // ── Login ─────────────────────────────────────────────────────────────────
-function showLogin(notice = '') {
+function showLogin(notice = '', noticeType = 'info') {
   // Ocultar topbar y sidebar (layout de pantalla completa para el login)
   document.getElementById('desktop-topbar').style.display = 'none'
   document.body.classList.add('login-mode')
@@ -236,7 +254,7 @@ function showLogin(notice = '') {
                 </span>
               </div>
             </div>
-            ${notice ? `<div class="login-notice">${notice}</div>` : ''}
+            ${notice ? `<div class="login-notice${noticeType === 'success' ? ' success' : ''}">${notice}</div>` : ''}
             <div id="login-error" class="login-error"></div>
             <button type="submit" class="login-submit" id="login-btn">Ingresar</button>
             <button type="button" class="login-forgot" id="btn-forgot">¿Olvidaste tu contraseña?</button>
@@ -264,6 +282,8 @@ function showLogin(notice = '') {
     errorDiv.textContent = ''
     try {
       const loginData = await login(correo, pass)
+      _primerIngresoPendiente = !!loginData?.primerIngreso
+      if (loginData?.expiresIn) _sessionExpiresIn = loginData.expiresIn
       if (loginData?.debeCambiarPassword) {
         showCambiarPasswordForzado()
       } else {
@@ -386,7 +406,7 @@ function showResetStep2(correo) {
             <img src="${logoAtara}" alt="ATARA" class="login-logo">
           </div>
           <h2 class="login-title">Ingresa el código</h2>
-          <p class="login-subtitle">Enviamos un código de 6 dígitos a <strong>${correo}</strong>. Expira en 15 minutos.</p>
+          <p class="login-subtitle">Enviamos un código de 4 dígitos a <strong>${correo}</strong>. Expira en 15 minutos.</p>
           <form class="login-form" id="reset-form-2">
             <div class="login-field">
               <label for="reset-codigo">Código de verificación</label>
@@ -434,7 +454,7 @@ function showResetStep2(correo) {
     const codigo    = content.querySelector('#reset-codigo').value.trim()
     const nueva     = content.querySelector('#reset-nueva').value
     const confirmar = content.querySelector('#reset-confirmar').value
-    if (!/^\d{6}$/.test(codigo))  { errorDiv.textContent = 'El código debe tener 6 dígitos.'; return }
+    if (!/^\d{4}$/.test(codigo))  { errorDiv.textContent = 'El código debe tener 4 dígitos.'; return }
     if (!validarPasswordConToasts(nueva)) {
       errorDiv.textContent = 'La contraseña no cumple los requisitos de seguridad.'
       return
@@ -443,7 +463,7 @@ function showResetStep2(correo) {
     btn.disabled = true; btn.textContent = 'Cambiando…'; errorDiv.textContent = ''
     try {
       await confirmarResetPassword(correo, codigo, nueva)
-      showLogin('Contraseña actualizada correctamente. Inicia sesión con tu nueva contraseña.')
+      showLogin('Contraseña actualizada correctamente. Inicia sesión con tu nueva contraseña.', 'success')
     } catch (err) {
       errorDiv.textContent = err.message
       btn.disabled = false; btn.textContent = 'Cambiar contraseña'
@@ -572,7 +592,7 @@ async function showRegistro() {
     btn.disabled = true; btn.textContent = 'Creando cuenta…'; errorDiv.textContent = ''
     try {
       await registro(nombre, apellidos, correo, pass, materiasIds)
-      showLogin('Cuenta creada. Revisa tu correo para verificar tu dirección y luego inicia sesión.')
+      showLogin('Cuenta creada. Revisa tu correo para verificar tu dirección y luego inicia sesión.', 'success')
     } catch (err) {
       errorDiv.textContent = err.message
       btn.disabled = false; btn.textContent = 'Crear cuenta'
@@ -659,14 +679,58 @@ async function afterLogin() {
   renderFooterLinks(me.rol)
   updateTopbar(me)
   const bsElA = document.querySelector('.backend-status')
-  if (bsElA) bsElA.style.display = me.rol === 'ADMIN' ? 'flex' : 'none'
+  if (bsElA) bsElA.style.display = 'flex'
   const hashPage = window.location.hash.slice(1)
   const startPage = (hashPage && pages[hashPage] && canNavigate(hashPage))
     ? hashPage
     : (DEFAULT_PAGE[me.rol] ?? 'aniosLectivos')
   renderBottomNav(me.rol, startPage)
   navigate(startPage)
+  updateTutorialMenuButton(me.rol)
+  programarAvisoSesion()
   window.dispatchEvent(new CustomEvent('atara:logged-in'))
+
+  // Tutorial de bienvenida: solo docentes y solo en su primer ingreso.
+  maybeStartTutorial({ rol: me.rol, primerIngreso: _primerIngresoPendiente })
+  _primerIngresoPendiente = false
+}
+
+// El botón "Ver tutorial" del menú de perfil solo tiene sentido para docentes
+// (el administrador no usa el tutorial). Permite reabrir la guía cuando se quiera.
+function updateTutorialMenuButton(rol) {
+  const btn = document.getElementById('topbar-btn-tutorial')
+  if (btn) btn.style.display = rol === 'ADMIN' ? 'none' : ''
+}
+
+// ── Aviso de sesión por expirar ───────────────────────────────────────────
+function programarAvisoSesion() {
+  if (_sessionWarnTimer) clearTimeout(_sessionWarnTimer)
+  // Avisar 5 minutos antes de que expire el access token
+  const warningMs = Math.max(0, (_sessionExpiresIn - 300)) * 1000
+  _sessionWarnTimer = setTimeout(() => {
+    showToast('Tu sesión expirará en 5 minutos. Guarda tu trabajo para no perderlo.', 'warning', 10000)
+  }, warningMs)
+}
+
+// ── Focus trap para el sidebar en móvil ───────────────────────────────────
+const FOCUSABLE = 'a[href], button:not([disabled]), input, select, textarea, [tabindex]:not([tabindex="-1"])'
+function trapFocus(container) {
+  const els = [...container.querySelectorAll(FOCUSABLE)].filter(el => el.offsetParent !== null)
+  if (!els.length) return
+  const first = els[0], last = els[els.length - 1]
+  container._trapHandler = e => {
+    if (e.key !== 'Tab') return
+    if (e.shiftKey) { if (document.activeElement === first) { e.preventDefault(); last.focus() } }
+    else            { if (document.activeElement === last)  { e.preventDefault(); first.focus() } }
+  }
+  container.addEventListener('keydown', container._trapHandler)
+  first.focus()
+}
+function releaseFocus(container) {
+  if (container._trapHandler) {
+    container.removeEventListener('keydown', container._trapHandler)
+    delete container._trapHandler
+  }
 }
 
 // ── Bootstrap: valida token antes de mostrar cualquier contenido ──────────
@@ -698,6 +762,7 @@ async function bootstrap() {
       : (DEFAULT_PAGE[me.rol] ?? 'aniosLectivos')
     renderBottomNav(me.rol, startPage)
     navigate(startPage)
+    updateTutorialMenuButton(me.rol)
   } catch {
     clearAccessToken(); clearRefreshToken(); clearUserId()
     showLogin()
@@ -717,6 +782,7 @@ window.addEventListener('atara:navigate', e => {
 
 window.addEventListener('atara:session-expired', () => {
   _currentUser = null
+  if (_sessionWarnTimer) { clearTimeout(_sessionWarnTimer); _sessionWarnTimer = null }
   showLogin('La sesión expiró. Inicia sesión nuevamente.')
 })
 
@@ -735,6 +801,11 @@ document.getElementById('topbar-btn-sesion')?.addEventListener('click', () => {
   navigate('sesion')
 })
 
+document.getElementById('topbar-btn-tutorial')?.addEventListener('click', () => {
+  topbarUser?.classList.remove('open')
+  startTutorial()
+})
+
 document.getElementById('topbar-btn-logout')?.addEventListener('click', async () => {
   topbarUser?.classList.remove('open')
   const btn = document.getElementById('topbar-btn-logout')
@@ -743,6 +814,7 @@ document.getElementById('topbar-btn-logout')?.addEventListener('click', async ()
   try {
     await logout()
     _currentUser = null
+    if (_sessionWarnTimer) { clearTimeout(_sessionWarnTimer); _sessionWarnTimer = null }
     showToast('Sesión cerrada correctamente.', 'info')
     window.dispatchEvent(new CustomEvent('atara:session-expired'))
   } finally {
@@ -760,12 +832,15 @@ function closeSidebar() {
   sidebar.classList.remove('open')
   backdrop.classList.remove('visible')
   hamburger?.classList.remove('open')
+  releaseFocus(sidebar)
 }
 
 hamburger?.addEventListener('click', () => {
   const isOpen = sidebar.classList.toggle('open')
   backdrop.classList.toggle('visible', isOpen)
   hamburger.classList.toggle('open', isOpen)
+  if (isOpen) trapFocus(sidebar)
+  else releaseFocus(sidebar)
 })
 backdrop.addEventListener('click', closeSidebar)
 
