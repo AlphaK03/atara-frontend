@@ -105,6 +105,8 @@
 
 /* Cuerpo (cambia en cada paso) */
 .atut-body {
+  flex: 1;       /* ocupa todo el espacio disponible entre cabecera y pie */
+  min-height: 0; /* imprescindible para que overflow-y funcione en un flex child */
   padding: 28px 36px 8px;
   overflow-y: auto;
   text-align: center;
