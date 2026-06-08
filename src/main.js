@@ -1,6 +1,7 @@
 import './style.css'
 import logoAtara  from './assets/images/logos/logo-atara-transparente.png'
-import logoUNA    from './assets/images/logos/logo_una.webp'
+import logoUNA    from './assets/images/logos/LogoUNA.svg'
+import logoDEB    from './assets/images/logos/DEB.png'
 import fondoLogin from './assets/images/backgrounds/fondo login.svg'
 import { checkHealth, getAccessToken, getContextoUsuario, login, logout,
          clearAccessToken, clearRefreshToken, clearUserId,
@@ -260,6 +261,17 @@ function showLogin(notice = '', noticeType = 'info') {
             <button type="button" class="login-forgot" id="btn-forgot">¿Olvidaste tu contraseña?</button>
             <button type="button" class="login-forgot" id="btn-registro">¿Eres nuevo? Crear cuenta</button>
           </form>
+          <div class="login-instituciones">
+            <a href="https://www.una.ac.cr/" target="_blank" rel="noopener noreferrer"
+               class="login-inst-link" title="Universidad Nacional de Costa Rica">
+              <img src="${logoUNA}" alt="Universidad Nacional de Costa Rica" class="login-inst-logo">
+            </a>
+            <div class="login-inst-sep"></div>
+            <a href="https://www.cide-basica.una.ac.cr/" target="_blank" rel="noopener noreferrer"
+               class="login-inst-link" title="División de Educación Básica — CIDE-UNA">
+              <img src="${logoDEB}" alt="División de Educación Básica" class="login-inst-logo login-inst-logo--deb">
+            </a>
+          </div>
         </div>
       </div>
       <div class="login-right">
